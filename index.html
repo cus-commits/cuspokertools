@@ -700,73 +700,59 @@ function buildFilterMenuHTML(n) {
   const isHE = gt === 'holdem';
   let html = '';
 
+  // Helper to make leaf items
+  const leaf = (syntax, label) => '<div class="filter-item" onclick="event.stopPropagation(); applyFilter('+n+',\''+syntax+'\',\''+label+'\')">' + label + ' <span class="syntax">' + syntax + '</span></div>';
+  const sub = (title, items) => '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">' + title + '<div class="filter-sub">' + items + '</div></div>';
+
   if (!isHE) {
     // ── PLO FILTERS ──
-    html += '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">Contains Pair' +
-      '<div class="filter-sub">' +
-        ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].map(r =>
-          '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'pair\',\''+r+'\')">' + r + r + '</div>'
-        ).join('') +
-      '</div></div>';
-    html += '<div class="filter-item" onclick="applyGenFilter('+n+',\'twopair\')">Two Pair</div>';
+    html += sub('Contains Pair',
+      ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].map(r => leaf(r+r, r+r)).join(''));
+    html += leaf('RROO', 'Two Pair');
+    html += leaf('AARR', 'Aces + Pair');
     html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">Suited' +
-      '<div class="filter-sub">' +
-        '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'ds\')">Double Suited</div>' +
-        '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'ss\')">Single Suited</div>' +
-        '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'rainbow\')">Rainbow/Badugi</div>' +
-      '</div></div>';
+    html += sub('Suited',
+      leaf('AA$ds', 'Double Suited Aces') +
+      leaf('*$ds', 'Any Double Suited') +
+      leaf('AA$ss', 'Single Suited Aces') +
+      leaf('*$ss', 'Any Single Suited') +
+      leaf('wxyz', 'Rainbow/Badugi'));
     html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">Rundowns' +
-      '<div class="filter-sub">' +
-        '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'rundown\',\'high\')">High (AKQJ-TJQK)</div>' +
-        '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'rundown\',\'mid\')">Medium (T987-6789)</div>' +
-        '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'rundown\',\'low\')">Low (6543-2345)</div>' +
-      '</div></div>';
+    html += sub('Rundowns',
+      leaf('AKQJ-T987', 'High Rundown') +
+      leaf('9876-', 'Medium Rundown') +
+      leaf('*$0g', '0-Gap Connected') +
+      leaf('*$1g', '1-Gap') +
+      leaf('*$2g', '2-Gap'));
     html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">Top % of Hands' +
-      '<div class="filter-sub">' +
-        ['5','10','15','20','25','30','40','50'].map(p =>
-          '<div class="filter-item" onclick="event.stopPropagation(); applyRangeFilter('+n+','+(100-parseInt(p))+',100)">Top ' + p + '%</div>'
-        ).join('') +
-      '</div></div>';
-    html += '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">Bottom % of Hands' +
-      '<div class="filter-sub">' +
-        ['5','10','15','20','25','30','40','50'].map(p =>
-          '<div class="filter-item" onclick="event.stopPropagation(); applyRangeFilter('+n+',0,'+p+')">Bottom ' + p + '%</div>'
-        ).join('') +
-      '</div></div>';
+    html += leaf('*$np', 'No Pairs');
+    html += leaf('*$nt', 'No Trips');
+    html += leaf('AA!AAA', 'Exactly 2 Aces');
     html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item" onclick="applyGenFilter('+n+',\'random\')">Random Hand</div>';
+    html += sub('Top % of Hands',
+      ['5','10','15','20','25','30','40','50'].map(p => leaf(p+'%', 'Top '+p+'%')).join(''));
+    html += sub('Bottom % of Hands',
+      ['50','60','70','80','90','95'].map(p => leaf(p+'%-100%', 'Bottom '+(100-parseInt(p))+'%')).join(''));
+    html += '<div class="filter-sep"></div>';
+    html += leaf('*', 'Random');
   } else {
     // ── HOLD'EM FILTERS ──
-    html += '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">Pairs' +
-      '<div class="filter-sub">' +
-        ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].map(r =>
-          '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'pair\',\''+r+'\')">' + r + r + '</div>'
-        ).join('') +
-      '</div></div>';
-    html += '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">Broadway' +
-      '<div class="filter-sub">' +
-        [['A','K'],['A','Q'],['A','J'],['K','Q'],['K','J'],['Q','J'],['J','T']].map(([a,b]) =>
-          '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'offsuit\',\''+a+b+'\')">' + a + b + 'o</div>'
-        ).join('') +
-      '</div></div>';
-    html += '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">Suited' +
-      '<div class="filter-sub">' +
-        [['A','K'],['A','Q'],['A','J'],['K','Q'],['K','J'],['Q','J'],['J','T'],['T','9']].map(([a,b]) =>
-          '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'suited\',\''+a+b+'\')">' + a + b + 's</div>'
-        ).join('') +
-      '</div></div>';
+    html += sub('Pairs',
+      ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].map(r => leaf(r+r, r+r)).join('') +
+      '<div class="filter-sep"></div>' +
+      leaf('TT+', 'TT+') + leaf('77+', '77+') + leaf('22+', 'Any Pair'));
+    html += sub('Broadway',
+      [['A','K'],['A','Q'],['A','J'],['K','Q'],['K','J'],['Q','J'],['J','T']].map(([a,b]) => leaf(a+b, a+b)).join(''));
+    html += sub('Suited',
+      leaf('AK$s','AKs') + leaf('AQ$s','AQs') + leaf('AJ$s','AJs') +
+      leaf('KQ$s','KQs') + leaf('KJ$s','KJs') + leaf('QJ$s','QJs') + leaf('JT$s','JTs'));
+    html += sub('Offsuit',
+      leaf('AK$o','AKo') + leaf('AQ$o','AQo') + leaf('KQ$o','KQo'));
     html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">Top % of Hands' +
-      '<div class="filter-sub">' +
-        ['5','10','15','20','25','30','40','50'].map(p =>
-          '<div class="filter-item" onclick="event.stopPropagation(); applyRangeFilter('+n+','+(100-parseInt(p))+',100)">Top ' + p + '%</div>'
-        ).join('') +
-      '</div></div>';
+    html += sub('Top % of Hands',
+      ['5','10','15','20','25','30','40','50'].map(p => leaf(p+'%', 'Top '+p+'%')).join(''));
     html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item" onclick="applyGenFilter('+n+',\'random\')">Random Hand</div>';
+    html += leaf('*', 'Random');
   }
   return html;
 }
@@ -793,57 +779,19 @@ function toggleFilterMenu(n) {
   }
 }
 
-function applyGenFilter(n, type, param) {
-  const gt = document.getElementById('game-type')?.value || 'omaha';
-  const isHE = gt === 'holdem';
-  const numCards = isHE ? 2 : 4;
-  const used = getUsedCards();
-  let hand = null;
-
-  if (type === 'pair') {
-    hand = genPairHand(param, numCards, used);
-  } else if (type === 'twopair') {
-    // Generate hand with two different pairs
-    const ranks = shuffleArray('AKQJT98765432'.split(''));
-    for (let i = 0; i < ranks.length - 1 && !hand; i++) {
-      const h1 = genPairHand(ranks[i], 2, used);
-      if (!h1) continue;
-      const u2 = new Set(used); h1.forEach(c => u2.add(c));
-      const h2 = genPairHand(ranks[i+1], 2, u2);
-      if (h2) hand = h1.concat(h2);
-    }
-  } else if (type === 'ds') {
-    hand = genDoubleSuitedHand(used);
-  } else if (type === 'ss') {
-    hand = genSingleSuitedHand(used);
-  } else if (type === 'rainbow') {
-    hand = genRainbowHand(used);
-  } else if (type === 'rundown') {
-    if (param === 'high') hand = genRundownHand(8, 12, used); // T-A
-    else if (param === 'mid') hand = genRundownHand(4, 9, used); // 6-J
-    else hand = genRundownHand(0, 5, used); // 2-7
-  } else if (type === 'suited' && isHE) {
-    hand = genSuitedHoldemHand(param[0], param[1], used);
-  } else if (type === 'offsuit' && isHE) {
-    hand = genOffsuitHoldemHand(param[0], param[1], used);
-  } else if (type === 'random') {
-    hand = genRandomHand(numCards, used);
+function applyFilter(n, syntax, description) {
+  // Simply insert PPT syntax into the hand input. The calculator's parser handles the rest.
+  const inp = document.getElementById('hand-' + n);
+  if (inp) {
+    inp.value = syntax;
+    updateHandPreview(n);
   }
-
-  if (hand) {
-    const inp = document.getElementById('hand-' + n);
-    if (inp) {
-      inp.value = cardsToStr(hand);
-      updateHandPreview(n);
-    }
-    // Set filter tag with description and tooltip
-    const desc = getFilterDescription(type, param);
-    const tag = document.getElementById('filter-tag-' + n);
-    if (tag) {
-      tag.textContent = desc.label;
-      tag.title = desc.title;
-    }
+  const tag = document.getElementById('filter-tag-' + n);
+  if (tag) {
+    tag.textContent = description || syntax;
+    tag.title = 'PPT syntax: ' + syntax;
   }
+  // Close all menus
   document.querySelectorAll('.filter-sub.open').forEach(s => s.classList.remove('open'));
   document.querySelectorAll('.filter-menu.open').forEach(m => m.classList.remove('open'));
 }
