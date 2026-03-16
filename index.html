@@ -2975,82 +2975,79 @@ async function runAICalculation(calc) {
 
     const rangeLabel = rangeToLabel(normalizedRange);
 
-    if (isDB) {
-      // Double board range mode
+    // Cap combos for performance
+    let combosToRun = allOppHands;
+    if (allOppHands.length > 80) {
+      shuffleArray(allOppHands);
+      combosToRun = allOppHands.slice(0, 80);
+    }
+
+    // Run in chunks to avoid blocking UI
+    const CHUNK = 10;
+    return new Promise((resolve, reject) => {
+      let idx = 0;
+      let totalHeroEq = 0, totalTrials = 0;
       let heroOverall = 0, oppOverall = 0;
       let heroB1 = 0, oppB1 = 0, heroB2 = 0, oppB2 = 0;
       let heroScoop = 0, oppScoop = 0;
-      let totalTrials = 0;
 
-      for (const oppHand of allOppHands) {
-        const matchHands = [heroHand, oppHand];
-        const au = new Set([...heroHand, ...oppHand, ...board1, ...board2]);
-        const rem = []; for (let i = 0; i < 52; i++) { if (!au.has(i)) rem.push(i); }
-        const r = simulateDoubleBoard(matchHands, board1, board2, rem);
-        heroOverall += r.overallEquity[0]; oppOverall += r.overallEquity[1];
-        heroB1 += r.board1Equity[0]; oppB1 += r.board1Equity[1];
-        heroB2 += r.board2Equity[0]; oppB2 += r.board2Equity[1];
-        heroScoop += r.scoopPct[0]; oppScoop += r.scoopPct[1];
-        totalTrials += r.trials;
+      function processChunk() {
+        const end = Math.min(idx + CHUNK, combosToRun.length);
+        for (; idx < end; idx++) {
+          const oppHand = combosToRun[idx];
+          const mh = [heroHand, oppHand];
+          if (isDB) {
+            const au = new Set([...heroHand, ...oppHand, ...board1, ...board2]);
+            const rem = []; for (let i = 0; i < 52; i++) { if (!au.has(i)) rem.push(i); }
+            const r = simulateDoubleBoard(mh, board1, board2, rem);
+            heroOverall += r.overallEquity[0]; oppOverall += r.overallEquity[1];
+            heroB1 += r.board1Equity[0]; oppB1 += r.board1Equity[1];
+            heroB2 += r.board2Equity[0]; oppB2 += r.board2Equity[1];
+            heroScoop += r.scoopPct[0]; oppScoop += r.scoopPct[1];
+            totalTrials += r.trials;
+          } else {
+            const bc = board1;
+            const au = new Set([...heroHand, ...oppHand, ...bc]);
+            const rem = []; for (let i = 0; i < 52; i++) { if (!au.has(i)) rem.push(i); }
+            const simFn = isHoldem ? simulateHoldem : simulateOmaha;
+            const r = simFn(mh, bc, rem);
+            const rEq = r.equities || r.equity || [];
+            totalHeroEq += (rEq[0] || 0) * r.trials;
+            totalTrials += r.trials;
+          }
+        }
+        if (idx < combosToRun.length) {
+          setTimeout(processChunk, 0); // yield to browser
+        } else {
+          // Done — build result
+          const n = combosToRun.length;
+          if (isDB) {
+            resolve({
+              trials: totalTrials,
+              overallEquity: [heroOverall/n, oppOverall/n],
+              board1Equity: [heroB1/n, oppB1/n],
+              board2Equity: [heroB2/n, oppB2/n],
+              scoopPct: [heroScoop/n, oppScoop/n],
+              exhaustive: false, allHands: [heroHand], board1, board2,
+              heroCount: 1, gameType, isRange: true,
+              rangeName: rangeLabel, rangeCombos: n, rangeTypes: n
+            });
+          } else {
+            const heroEq = totalHeroEq / totalTrials;
+            resolve({
+              trials: totalTrials,
+              equities: [heroEq, 1 - heroEq],
+              wins: [Math.round(heroEq*n), Math.round((1-heroEq)*n)],
+              ties: [0, 0], allHands: [heroHand], board1, board2: [],
+              heroCount: 1, gameType: isHoldem ? 'holdem' : 'omaha',
+              isRange: true, rangeName: rangeLabel,
+              rangeCombos: allOppHands.length, rangeTypes: n
+            });
+          }
+        }
       }
-      const n = allOppHands.length;
-      return {
-        trials: totalTrials,
-        overallEquity: [heroOverall/n, oppOverall/n],
-        board1Equity: [heroB1/n, oppB1/n],
-        board2Equity: [heroB2/n, oppB2/n],
-        scoopPct: [heroScoop/n, oppScoop/n],
-        exhaustive: false,
-        allHands: [heroHand],
-        board1: board1,
-        board2: board2,
-        heroCount: 1,
-        gameType: gameType,
-        isRange: true,
-        rangeName: rangeLabel,
-        rangeCombos: n,
-        rangeTypes: allOppHands.length
-      };
-    } else {
-      // Hold'em or Omaha range mode
-      let totalHeroEq = 0, totalTrials = 0;
-      const simFn = isHoldem ? simulateHoldem : simulateOmaha;
-      const bc = board1;
-
-      // Cap combos for performance — if too many combos, sample randomly
-      let combosToRun = allOppHands;
-      if (allOppHands.length > 80) {
-        shuffleArray(allOppHands);
-        combosToRun = allOppHands.slice(0, 80);
-      }
-
-      for (const oppHand of combosToRun) {
-        const mh = [heroHand, oppHand];
-        const au = new Set([...heroHand, ...oppHand, ...bc]);
-        const rem = []; for (let i = 0; i < 52; i++) { if (!au.has(i)) rem.push(i); }
-        const r = simFn(mh, bc, rem);
-        const rEq = r.equities || r.equity || [];
-        totalHeroEq += (rEq[0] || 0) * r.trials;
-        totalTrials += r.trials;
-      }
-
-      const heroEq = totalHeroEq / totalTrials;
-      return {
-        trials: totalTrials,
-        equities: [heroEq, 1 - heroEq],
-        wins: [Math.round(heroEq * allOppHands.length), Math.round((1-heroEq) * allOppHands.length)],
-        ties: [0, 0],
-        allHands: [heroHand],
-        board1: board1,
-        board2: [],
-        heroCount: 1,
-        gameType: isHoldem ? 'holdem' : 'omaha',
-        isRange: true,
-        rangeName: rangeLabel,
-        rangeCombos: allOppHands.length,
-        rangeTypes: allOppHands.length
-      };
-    }
+      processChunk();
+    });
   }
 
   // NON-RANGE MODE: generate random opponent hands
