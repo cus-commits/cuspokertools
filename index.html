@@ -2859,12 +2859,25 @@ async function callClaude() {
         appendAIMessage(renderMarkdown(beforeCalc));
       }
 
-      // Parse and run the calculation
-      appendSystemMessage('Running equity calculation...');
+      // Parse and run the calculation with live progress
+      const progressDiv = document.createElement('div');
+      progressDiv.className = 'ai-msg ai-msg-system';
+      progressDiv.innerHTML = '⏳ Running equity calculation...';
+      document.getElementById('ai-chat-area').appendChild(progressDiv);
 
       try {
         const calcJson = JSON.parse(calcMatch[1].trim());
-        const calcResults = await runAICalculation(calcJson);
+        const calcResults = await runAICalculation(calcJson, (done, total, heroEqSoFar) => {
+          const pct = Math.round(done / total * 100);
+          const bar = '█'.repeat(Math.round(pct / 5)) + '░'.repeat(20 - Math.round(pct / 5));
+          let msg = '⏳ Calculating: ' + done + '/' + total + ' combos [' + bar + '] ' + pct + '%';
+          if (heroEqSoFar !== undefined && done > 0) {
+            msg += '\n📊 Running equity: ' + (heroEqSoFar * 100).toFixed(1) + '%';
+          }
+          progressDiv.innerHTML = msg.replace('\n', '<br>');
+          document.getElementById('ai-chat-area').scrollTop = document.getElementById('ai-chat-area').scrollHeight;
+        });
+        progressDiv.remove();
 
         // Send results back to Claude for analysis
         const resultsMsg = formatCalcResultsForClaude(calcJson, calcResults);
@@ -2927,7 +2940,7 @@ async function callClaude() {
 // ============================================================
 // Run calculation from AI JSON command
 // ============================================================
-async function runAICalculation(calc) {
+async function runAICalculation(calc, onProgress) {
   const usedCards = new Set();
   const heroHands = [];
 
@@ -3015,6 +3028,11 @@ async function runAICalculation(calc) {
             totalHeroEq += (rEq[0] || 0) * r.trials;
             totalTrials += r.trials;
           }
+        }
+        // Report progress
+        if (onProgress) {
+          const runningEq = totalTrials > 0 ? totalHeroEq / totalTrials : (isDB && idx > 0 ? heroOverall / idx : undefined);
+          onProgress(idx, combosToRun.length, runningEq);
         }
         if (idx < combosToRun.length) {
           setTimeout(processChunk, 0); // yield to browser
