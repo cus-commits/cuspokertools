@@ -746,25 +746,49 @@ function buildFilterMenu(n, menuEl) {
     closeAllFilterMenus();
   }
 
+  // Compact pair grid
+  function addPairGrid() {
+    addHeader('Pairs');
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:flex;flex-wrap:wrap;gap:2px;padding:4px 8px;';
+    ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].forEach(r => {
+      const btn = document.createElement('button');
+      btn.style.cssText = 'padding:3px 6px;font-size:11px;font-family:monospace;font-weight:bold;border:1px solid #ccc;border-radius:3px;background:#f8f8f8;cursor:pointer;min-width:28px;';
+      btn.textContent = r + r;
+      btn.title = 'Any combo of ' + r + r + (isHE ? ' (6 combos)' : ' + 2 random cards');
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const inp = document.getElementById('hand-' + n);
+        if (inp) { inp.value = r+r; updateHandPreview(n); }
+        const tag = document.getElementById('filter-tag-' + n);
+        if (tag) { tag.textContent = 'Any ' + r+r; tag.title = 'PPT: ' + r+r + ' — all suit combos'; }
+        closeAllFilterMenus();
+      });
+      btn.addEventListener('mouseenter', function() { this.style.background='#e8f5e9'; });
+      btn.addEventListener('mouseleave', function() { this.style.background='#f8f8f8'; });
+      grid.appendChild(btn);
+    });
+    menuEl.appendChild(grid);
+  }
+
   if (!isHE) {
     // PLO
-    addHeader('Pairs');
-    ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].forEach(r => addItem(r+r, r+r, 'Hand with at least two ' + r + 's'));
-    addItem('Two Pair', 'RROO', 'Hand with two pairs');
-    addItem('Aces + Pair', 'AARR', 'Two aces plus another pair');
+    addPairGrid();
+    addItem('Any two pair', 'RROO', 'Two pair hand — all rank combos');
+    addItem('Aces + another pair', 'AARR', 'AA with any other pair');
     addSep();
     addHeader('Suited');
-    addItem('Double Suited Aces', 'AA$ds', 'Aces with two suits, two cards each');
-    addItem('Any Double Suited', '*$ds', 'Any hand with two suits');
-    addItem('Single Suited Aces', 'AA$ss', 'Aces with one dominant suit');
-    addItem('Any Single Suited', '*$ss', 'Any single-suited hand');
-    addItem('Rainbow/Badugi', 'wxyz', 'All four suits');
+    addItem('Double suited aces', 'AA$ds', 'AA with 2 suits, 2 cards each');
+    addItem('Any double suited', '*$ds', 'Any hand: 2 suits, 2 each');
+    addItem('Single suited aces', 'AA$ss', 'AA with 3 suits');
+    addItem('Any single suited', '*$ss', 'Any hand with 3 suits');
+    addItem('Rainbow (4 suits)', 'wxyz', 'All 4 different suits');
     addSep();
     addHeader('Rundowns');
-    addItem('High Rundown', 'AKQJ-T987', 'Connected AKQJ down to T987');
-    addItem('Medium Rundown', '9876-', 'Medium-low connected cards');
-    addItem('0-Gap Connected', '*$0g', 'Four connected cards');
-    addItem('1-Gap', '*$1g', 'One gap in connectivity');
+    addItem('High rundown', 'AKQJ-T987', 'AKQJ thru T987 connected');
+    addItem('Medium rundown', '9876-', 'Medium-low connected');
+    addItem('0-gap connected', '*$0g', '4 consecutive ranks');
+    addItem('1-gap', '*$1g', '1 gap in connectivity');
     addItem('2-Gap', '*$2g', 'Two gaps in connectivity');
     addSep();
     addHeader('Constraints');
@@ -784,11 +808,10 @@ function buildFilterMenu(n, menuEl) {
     addItem('Random', '*', 'Any random hand');
   } else {
     // Hold'em
-    addHeader('Pairs');
-    ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].forEach(r => addItem(r+r, r+r, 'Pocket ' + r + 's'));
-    addItem('TT+', 'TT+', 'Tens or better');
-    addItem('77+', '77+', 'Sevens or better');
-    addItem('Any Pair', '22+', 'Any pocket pair');
+    addPairGrid();
+    addItem('TT or better', 'TT+', 'TT, JJ, QQ, KK, AA — all combos');
+    addItem('77 or better', '77+', '77 thru AA — all combos');
+    addItem('Any pocket pair', '22+', '22 thru AA — all 78 combos');
     addSep();
     addHeader('Unpaired');
     [['A','K'],['A','Q'],['A','J'],['K','Q'],['K','J'],['Q','J'],['J','T']].forEach(([a,b]) => addItem(a+b, a+b, a+b + ' suited or offsuit'));
@@ -1427,9 +1450,10 @@ function simulateHoldem(hands, boardCards, remaining, maxTrials) {
   const numToRun = 5 - boardCards.length;
   const nPlayers = hands.length;
 
+  const mt = maxTrials || 100000;
   const totalCombos = numToRun === 0 ? 1 : comb(remaining.length, numToRun);
-  const exhaustive = totalCombos <= (maxTrials || 500000);
-  const trials = exhaustive ? totalCombos : (maxTrials || 100000);
+  const exhaustive = totalCombos <= mt;
+  const trials = exhaustive ? totalCombos : mt;
 
   const wins = new Array(nPlayers).fill(0);
   const ties = new Array(nPlayers).fill(0);
