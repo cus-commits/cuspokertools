@@ -571,116 +571,285 @@ function removeHand(n) {
 }
 
 // ── Filter Menu ──
+// Filters GENERATE actual hands and put real cards in the input field.
+// They also can switch to range mode for percentile-based ranges.
+
+function getUsedCards() {
+  const used = new Set();
+  // Collect cards from all inputs
+  ['board-input','board1-input','board2-input','dead-input'].forEach(id => {
+    try { parseCards(document.getElementById(id)?.value || '').forEach(c => used.add(c)); } catch(e) {}
+  });
+  document.querySelectorAll('#hands-container input[type="text"]').forEach(inp => {
+    try { parseCards(inp.value).forEach(c => used.add(c)); } catch(e) {}
+  });
+  return used;
+}
+
+function genPairHand(pairRank, numCards, used) {
+  // Generate a hand containing a pair of the given rank + random other cards
+  const ri = RANKS.indexOf(pairRank);
+  if (ri < 0) return null;
+  const suits = shuffleArray([0,1,2,3]);
+  const hand = [];
+  // Pick 2 suits for the pair
+  for (const s of suits) {
+    const ci = ri * 4 + s;
+    if (!used.has(ci) && hand.length < 2) hand.push(ci);
+  }
+  if (hand.length < 2) return null;
+  // Fill remaining with random
+  const avail = [];
+  for (let i = 0; i < 52; i++) { if (!used.has(i) && !hand.includes(i)) avail.push(i); }
+  shuffleArray(avail);
+  while (hand.length < numCards && avail.length > 0) hand.push(avail.shift());
+  return hand.length === numCards ? hand : null;
+}
+
+function genDoubleSuitedHand(used) {
+  // 4-card hand with 2 suits, 2 cards each
+  const avail = []; for (let i = 0; i < 52; i++) { if (!used.has(i)) avail.push(i); }
+  for (let att = 0; att < 100; att++) {
+    shuffleArray(avail);
+    const h = avail.slice(0, 4);
+    const suits = h.map(c => c % 4);
+    const sc = {}; suits.forEach(s => sc[s] = (sc[s]||0)+1);
+    const vals = Object.values(sc);
+    if (vals.length === 2 && vals[0] === 2 && vals[1] === 2) return h;
+  }
+  return avail.slice(0, 4);
+}
+
+function genSingleSuitedHand(used) {
+  const avail = []; for (let i = 0; i < 52; i++) { if (!used.has(i)) avail.push(i); }
+  for (let att = 0; att < 100; att++) {
+    shuffleArray(avail);
+    const h = avail.slice(0, 4);
+    const suits = h.map(c => c % 4);
+    const sc = {}; suits.forEach(s => sc[s] = (sc[s]||0)+1);
+    const maxSuit = Math.max(...Object.values(sc));
+    const uniqueSuits = Object.keys(sc).length;
+    if (maxSuit === 2 && uniqueSuits === 3) return h;
+  }
+  return avail.slice(0, 4);
+}
+
+function genRainbowHand(used) {
+  const avail = []; for (let i = 0; i < 52; i++) { if (!used.has(i)) avail.push(i); }
+  for (let att = 0; att < 100; att++) {
+    shuffleArray(avail);
+    const h = avail.slice(0, 4);
+    const suits = new Set(h.map(c => c % 4));
+    if (suits.size === 4) return h;
+  }
+  return avail.slice(0, 4);
+}
+
+function genRundownHand(minRank, maxRank, used) {
+  // Generate 4 connected cards within rank range
+  const avail = []; for (let i = 0; i < 52; i++) { if (!used.has(i)) avail.push(i); }
+  for (let att = 0; att < 100; att++) {
+    const startRank = minRank + Math.floor(Math.random() * (maxRank - minRank - 2));
+    const ranks = [startRank, startRank+1, startRank+2, startRank+3];
+    const hand = [];
+    let ok = true;
+    for (const r of ranks) {
+      if (r > 12) { ok = false; break; }
+      const suitOptions = shuffleArray([0,1,2,3]);
+      let placed = false;
+      for (const s of suitOptions) {
+        const ci = r * 4 + s;
+        if (!used.has(ci) && !hand.includes(ci)) { hand.push(ci); placed = true; break; }
+      }
+      if (!placed) { ok = false; break; }
+    }
+    if (ok && hand.length === 4) return hand;
+  }
+  return avail.slice(0, 4);
+}
+
+function genRandomHand(numCards, used) {
+  const avail = []; for (let i = 0; i < 52; i++) { if (!used.has(i)) avail.push(i); }
+  shuffleArray(avail);
+  return avail.slice(0, numCards);
+}
+
+function genSuitedHoldemHand(r1, r2, used) {
+  const ri1 = RANKS.indexOf(r1), ri2 = RANKS.indexOf(r2);
+  for (let s = 0; s < 4; s++) {
+    const c1 = ri1 * 4 + s, c2 = ri2 * 4 + s;
+    if (!used.has(c1) && !used.has(c2)) return [c1, c2];
+  }
+  return null;
+}
+
+function genOffsuitHoldemHand(r1, r2, used) {
+  const ri1 = RANKS.indexOf(r1), ri2 = RANKS.indexOf(r2);
+  for (let s1 = 0; s1 < 4; s1++) {
+    for (let s2 = 0; s2 < 4; s2++) {
+      if (s1 === s2) continue;
+      const c1 = ri1 * 4 + s1, c2 = ri2 * 4 + s2;
+      if (!used.has(c1) && !used.has(c2)) return [c1, c2];
+    }
+  }
+  return null;
+}
+
 function buildFilterMenuHTML(n) {
   const gt = document.getElementById('game-type')?.value || 'omaha';
   const isHE = gt === 'holdem';
   let html = '';
 
   if (!isHE) {
-    // PLO filters
-    html += '<div class="filter-item has-sub">Contains Pair' +
+    // ── PLO FILTERS ──
+    html += '<div class="filter-item has-sub">Contains Pair ▸' +
       '<div class="filter-sub">' +
-        ['AA','KK','QQ','JJ','TT','99','88','77','66','55','44','33','22'].map(p =>
-          '<div class="filter-item" onclick="applyFilter('+n+',\''+p+'\')">' + p + '</div>'
+        'AAKKQQJJTT998877665544332'.match(/.{1}/g).filter((v,i,a) => a.indexOf(v) === i ? true : false).length +
+        ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].map(r =>
+          '<div class="filter-item" onclick="applyGenFilter('+n+',\'pair\',\''+r+'\')">' + r + r + '</div>'
         ).join('') +
       '</div></div>';
-    html += '<div class="filter-item" onclick="applyFilter('+n+',\'RROO\')">Two Pair <span class="syntax">RROO</span></div>';
-    html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item has-sub">Suited' +
+    // fix the above
+    html = '';
+    html += '<div class="filter-item has-sub">Contains Pair ▸' +
       '<div class="filter-sub">' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'*$ds\')">Double Suited <span class="syntax">$ds</span></div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'*$ss\')">Single Suited <span class="syntax">$ss</span></div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'wxyz\')">Badugi/Rainbow <span class="syntax">wxyz</span></div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'ss\')">Two Spades <span class="syntax">ss</span></div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'hh\')">Two Hearts <span class="syntax">hh</span></div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'dd\')">Two Diamonds <span class="syntax">dd</span></div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'cc\')">Two Clubs <span class="syntax">cc</span></div>' +
+        ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].map(r =>
+          '<div class="filter-item" onclick="applyGenFilter('+n+',\'pair\',\''+r+'\')">' + r + r + '</div>'
+        ).join('') +
+      '</div></div>';
+    html += '<div class="filter-item" onclick="applyGenFilter('+n+',\'twopair\')">Two Pair</div>';
+    html += '<div class="filter-sep"></div>';
+    html += '<div class="filter-item has-sub">Suited ▸' +
+      '<div class="filter-sub">' +
+        '<div class="filter-item" onclick="applyGenFilter('+n+',\'ds\')">Double Suited</div>' +
+        '<div class="filter-item" onclick="applyGenFilter('+n+',\'ss\')">Single Suited</div>' +
+        '<div class="filter-item" onclick="applyGenFilter('+n+',\'rainbow\')">Rainbow/Badugi</div>' +
       '</div></div>';
     html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item has-sub">Rundowns' +
+    html += '<div class="filter-item has-sub">Rundowns ▸' +
       '<div class="filter-sub">' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'AKQJ-T987\')">High Rundown <span class="syntax">AKQJ-T987</span></div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'9876-\')">Medium Rundown <span class="syntax">9876-</span></div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'*$0g\')">0-Gap <span class="syntax">$0g</span></div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'*$1g\')">1-Gap <span class="syntax">$1g</span></div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'*$2g\')">2-Gap <span class="syntax">$2g</span></div>' +
+        '<div class="filter-item" onclick="applyGenFilter('+n+',\'rundown\',\'high\')">High (AKQJ-TJQK)</div>' +
+        '<div class="filter-item" onclick="applyGenFilter('+n+',\'rundown\',\'mid\')">Medium (T987-6789)</div>' +
+        '<div class="filter-item" onclick="applyGenFilter('+n+',\'rundown\',\'low\')">Low (6543-2345)</div>' +
       '</div></div>';
     html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item" onclick="applyFilter('+n+',\'*$np\')">No Pairs <span class="syntax">$np</span></div>';
-    html += '<div class="filter-item" onclick="applyFilter('+n+',\'*$nt\')">No Trips <span class="syntax">$nt</span></div>';
-    html += '<div class="filter-item" onclick="applyFilter('+n+',\'AA!AAA\')">Exactly 2 Aces <span class="syntax">AA!AAA</span></div>';
-    html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item has-sub">Card Sizes' +
-      '<div class="filter-sub">' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'$B$B$B$B\')">All Big [A-J] <span class="syntax">$B$B$B$B</span></div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'$M$M$M$M\')">All Mid [T-7] <span class="syntax">$M$M$M$M</span></div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'$Z$Z$Z$Z\')">All Small [6-2] <span class="syntax">$Z$Z$Z$Z</span></div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'$W$W$W$W\')">Wheel Cards <span class="syntax">$W$W$W$W</span></div>' +
-      '</div></div>';
-    html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item has-sub">Percentile' +
+    html += '<div class="filter-item has-sub">Top % of Hands ▸' +
       '<div class="filter-sub">' +
         ['5','10','15','20','25','30','40','50'].map(p =>
-          '<div class="filter-item" onclick="applyFilter('+n+',\''+p+'%\')">Top ' + p + '% <span class="syntax">' + p + '%</span></div>'
+          '<div class="filter-item" onclick="applyRangeFilter('+n+',0,'+p+')">Top ' + p + '%</div>'
         ).join('') +
       '</div></div>';
-    html += '<div class="filter-item" onclick="applyFilter('+n+',\'*\')">Random <span class="syntax">*</span></div>';
-  } else {
-    // Hold'em filters
-    html += '<div class="filter-item has-sub">Pairs' +
+    html += '<div class="filter-item has-sub">Bottom % of Hands ▸' +
       '<div class="filter-sub">' +
-        ['AA','KK','QQ','JJ','TT','99','88','77','66','55','44','33','22'].map(p =>
-          '<div class="filter-item" onclick="applyFilter('+n+',\''+p+'\')">' + p + '</div>'
+        ['5','10','15','20','25','30','40','50'].map(p =>
+          '<div class="filter-item" onclick="applyRangeFilter('+n+','+(100-parseInt(p))+',100)">Bottom ' + p + '%</div>'
         ).join('') +
-        '<div class="filter-sep"></div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'TT+\')">TT+ <span class="syntax">TT+</span></div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'77+\')">77+ <span class="syntax">77+</span></div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'22+\')">Any Pair <span class="syntax">22+</span></div>' +
-      '</div></div>';
-    html += '<div class="filter-item has-sub">Broadway' +
-      '<div class="filter-sub">' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'AK\')">AK</div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'AQ\')">AQ</div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'AJ\')">AJ</div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'KQ\')">KQ</div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'KJ\')">KJ</div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'QJ\')">QJ</div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'JT\')">JT</div>' +
-      '</div></div>';
-    html += '<div class="filter-item has-sub">Suited' +
-      '<div class="filter-sub">' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'AKs\')">AKs</div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'AQs\')">AQs</div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'KQs\')">KQs</div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'Axs\')">Suited Ace <span class="syntax">Axs</span></div>' +
-        '<div class="filter-item" onclick="applyFilter('+n+',\'Kxs\')">Suited King <span class="syntax">Kxs</span></div>' +
       '</div></div>';
     html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item" onclick="applyFilter('+n+',\'*\')">Random <span class="syntax">*</span></div>';
+    html += '<div class="filter-item" onclick="applyGenFilter('+n+',\'random\')">Random Hand</div>';
+  } else {
+    // ── HOLD'EM FILTERS ──
+    html += '<div class="filter-item has-sub">Pairs ▸' +
+      '<div class="filter-sub">' +
+        ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].map(r =>
+          '<div class="filter-item" onclick="applyGenFilter('+n+',\'pair\',\''+r+'\')">' + r + r + '</div>'
+        ).join('') +
+      '</div></div>';
+    html += '<div class="filter-item has-sub">Broadway ▸' +
+      '<div class="filter-sub">' +
+        [['A','K'],['A','Q'],['A','J'],['K','Q'],['K','J'],['Q','J'],['J','T']].map(([a,b]) =>
+          '<div class="filter-item" onclick="applyGenFilter('+n+',\'offsuit\',\''+a+b+'\')">' + a + b + 'o</div>'
+        ).join('') +
+      '</div></div>';
+    html += '<div class="filter-item has-sub">Suited ▸' +
+      '<div class="filter-sub">' +
+        [['A','K'],['A','Q'],['A','J'],['K','Q'],['K','J'],['Q','J'],['J','T'],['T','9']].map(([a,b]) =>
+          '<div class="filter-item" onclick="applyGenFilter('+n+',\'suited\',\''+a+b+'\')">' + a + b + 's</div>'
+        ).join('') +
+      '</div></div>';
+    html += '<div class="filter-sep"></div>';
+    html += '<div class="filter-item has-sub">Top % of Hands ▸' +
+      '<div class="filter-sub">' +
+        ['5','10','15','20','25','30','40','50'].map(p =>
+          '<div class="filter-item" onclick="applyRangeFilter('+n+',0,'+p+')">Top ' + p + '%</div>'
+        ).join('') +
+      '</div></div>';
+    html += '<div class="filter-sep"></div>';
+    html += '<div class="filter-item" onclick="applyGenFilter('+n+',\'random\')">Random Hand</div>';
   }
   return html;
 }
+
 function toggleFilterMenu(n) {
-  // Close all other menus first
   document.querySelectorAll('.filter-menu.open').forEach(m => m.classList.remove('open'));
   const menu = document.getElementById('filter-menu-' + n);
   if (menu) {
-    // Rebuild in case game type changed
     menu.innerHTML = buildFilterMenuHTML(n);
     menu.classList.toggle('open');
   }
 }
-function applyFilter(n, syntax) {
-  const inp = document.getElementById('hand-' + n);
-  if (inp) {
-    // Append with comma if there's already content
-    if (inp.value.trim()) {
-      inp.value = inp.value.trim() + ', ' + syntax;
-    } else {
-      inp.value = syntax;
+
+function applyGenFilter(n, type, param) {
+  const gt = document.getElementById('game-type')?.value || 'omaha';
+  const isHE = gt === 'holdem';
+  const numCards = isHE ? 2 : 4;
+  const used = getUsedCards();
+  let hand = null;
+
+  if (type === 'pair') {
+    hand = genPairHand(param, numCards, used);
+  } else if (type === 'twopair') {
+    // Generate hand with two different pairs
+    const ranks = shuffleArray('AKQJT98765432'.split(''));
+    for (let i = 0; i < ranks.length - 1 && !hand; i++) {
+      const h1 = genPairHand(ranks[i], 2, used);
+      if (!h1) continue;
+      const u2 = new Set(used); h1.forEach(c => u2.add(c));
+      const h2 = genPairHand(ranks[i+1], 2, u2);
+      if (h2) hand = h1.concat(h2);
     }
+  } else if (type === 'ds') {
+    hand = genDoubleSuitedHand(used);
+  } else if (type === 'ss') {
+    hand = genSingleSuitedHand(used);
+  } else if (type === 'rainbow') {
+    hand = genRainbowHand(used);
+  } else if (type === 'rundown') {
+    if (param === 'high') hand = genRundownHand(8, 12, used); // T-A
+    else if (param === 'mid') hand = genRundownHand(4, 9, used); // 6-J
+    else hand = genRundownHand(0, 5, used); // 2-7
+  } else if (type === 'suited' && isHE) {
+    hand = genSuitedHoldemHand(param[0], param[1], used);
+  } else if (type === 'offsuit' && isHE) {
+    hand = genOffsuitHoldemHand(param[0], param[1], used);
+  } else if (type === 'random') {
+    hand = genRandomHand(numCards, used);
   }
-  // Close menu
+
+  if (hand) {
+    const inp = document.getElementById('hand-' + n);
+    if (inp) inp.value = cardsToStr(hand);
+  }
+  document.querySelectorAll('.filter-menu.open').forEach(m => m.classList.remove('open'));
+}
+
+function applyRangeFilter(n, lo, hi) {
+  // Switch to range mode and set the slider
+  const btn = document.getElementById('mode-' + n);
+  const inp = document.getElementById('hand-' + n);
+  const range = document.getElementById('range-' + n);
+  if (btn && !btn.classList.contains('range-active')) {
+    btn.classList.add('range-active');
+    btn.textContent = 'Cards';
+    inp.style.display = 'none';
+    range.style.display = 'flex';
+    inp.dataset.rangeMode = 'true';
+  }
+  const loEl = document.getElementById('range-lo-' + n);
+  const hiEl = document.getElementById('range-hi-' + n);
+  if (loEl) loEl.value = lo;
+  if (hiEl) hiEl.value = hi;
+  updateDualRange(n);
   document.querySelectorAll('.filter-menu.open').forEach(m => m.classList.remove('open'));
 }
 // Close filter menus when clicking outside
