@@ -1144,7 +1144,7 @@ function runSimulation() {
         // Chunked async range calculation with live progress
         const isDB = gameType === 'doubleboard';
         const isOmaha2 = gameType === 'omaha' || isDB;
-        const CHUNK2 = 5;
+        const CHUNK2 = 1;
         let idx2 = 0;
         let totalHeroEq2 = 0, totalOppEq2 = 0, totalTrials2 = 0;
         let heroOverall2 = 0, oppOverall2 = 0;
@@ -1159,7 +1159,7 @@ function runSimulation() {
             if (isDB) {
               const au = new Set([...heroHand, ...oppHand, ...board1Cards, ...board2Cards, ...deadCards]);
               const rem = []; for (let i = 0; i < 52; i++) { if (!au.has(i)) rem.push(i); }
-              const r = simulateDoubleBoard(mh, board1Cards, board2Cards, rem);
+              const r = simulateDoubleBoard(mh, board1Cards, board2Cards, rem, 10000);
               heroOverall2 += r.overallEquity[0]; oppOverall2 += r.overallEquity[1];
               heroB12 += r.board1Equity[0]; oppB12 += r.board1Equity[1];
               heroB22 += r.board2Equity[0]; oppB22 += r.board2Equity[1];
@@ -1169,7 +1169,7 @@ function runSimulation() {
               const bc = boardCards;
               const au = new Set([...heroHand, ...oppHand, ...bc, ...deadCards]);
               const rem = []; for (let i = 0; i < 52; i++) { if (!au.has(i)) rem.push(i); }
-              const r = isOmaha2 ? simulateOmaha(mh, bc, rem) : simulateHoldem(mh, bc, rem);
+              const r = isOmaha2 ? simulateOmaha(mh, bc, rem, 10000) : simulateHoldem(mh, bc, rem, 10000);
               const rEq = r.equities || r.equity || [];
               totalHeroEq2 += (rEq[0] || 0) * r.trials;
               totalOppEq2 += (rEq[1] || 0) * r.trials;
@@ -1289,7 +1289,7 @@ function runSimulation() {
       resultsArea.innerHTML = '<p class="loading">Running ' + rangeDesc + ' range (' + allOppHands.length + ' combos)...</p>';
 
       // Chunked async slider range calculation to avoid freezing
-      const SLIDER_CHUNK = 5;
+      const SLIDER_CHUNK = 1;
       let sliderIdx = 0;
       let totalHeroEq = 0, totalOppEq = 0, totalTrials = 0;
 
@@ -1302,7 +1302,7 @@ function runSimulation() {
             const allUsed = new Set([...heroHand, ...oppHand, ...boardCards, ...deadCards]);
             const rem = [];
             for (let i = 0; i < 52; i++) { if (!allUsed.has(i)) rem.push(i); }
-            const r = simulateHoldem(matchHands, boardCards, rem);
+            const r = simulateHoldem(matchHands, boardCards, rem, 10000);
             const rEq3 = r.equities || r.equity || [];
             totalHeroEq += (rEq3[0] || 0) * r.trials;
             totalOppEq += (rEq3[1] || 0) * r.trials;
@@ -1423,13 +1423,13 @@ function runSimulation() {
 // ============================================================
 // Hold'em Simulation
 // ============================================================
-function simulateHoldem(hands, boardCards, remaining) {
+function simulateHoldem(hands, boardCards, remaining, maxTrials) {
   const numToRun = 5 - boardCards.length;
   const nPlayers = hands.length;
 
   const totalCombos = numToRun === 0 ? 1 : comb(remaining.length, numToRun);
-  const exhaustive = totalCombos <= 500000;
-  const trials = exhaustive ? totalCombos : 100000;
+  const exhaustive = totalCombos <= (maxTrials || 500000);
+  const trials = exhaustive ? totalCombos : (maxTrials || 100000);
 
   const wins = new Array(nPlayers).fill(0);
   const ties = new Array(nPlayers).fill(0);
@@ -1480,13 +1480,14 @@ function evaluateHoldemShowdown(hands, board, wins, ties) {
 // ============================================================
 // Omaha Simulation
 // ============================================================
-function simulateOmaha(hands, boardCards, remaining) {
+function simulateOmaha(hands, boardCards, remaining, maxTrials) {
   const numToRun = 5 - boardCards.length;
   const nPlayers = hands.length;
 
   const totalCombos = numToRun === 0 ? 1 : comb(remaining.length, numToRun);
-  const exhaustive = totalCombos <= 500000;
-  const trials = exhaustive ? totalCombos : 100000;
+  const mt = maxTrials || 500000;
+  const exhaustive = totalCombos <= mt;
+  const trials = exhaustive ? totalCombos : Math.min(mt, 100000);
 
   const wins = new Array(nPlayers).fill(0);
   const ties = new Array(nPlayers).fill(0);
@@ -1537,15 +1538,16 @@ function evaluateOmahaShowdown(hands, board, wins, ties) {
 // ============================================================
 // Double Board PLO Bomb Pot Simulation
 // ============================================================
-function simulateDoubleBoard(hands, board1Cards, board2Cards, remaining) {
+function simulateDoubleBoard(hands, board1Cards, board2Cards, remaining, maxTrials) {
   const need1 = 5 - board1Cards.length;
   const need2 = 5 - board2Cards.length;
   const totalNeed = need1 + need2;
   const nPlayers = hands.length;
 
+  const mt = maxTrials || 300000;
   const totalCombos = totalNeed === 0 ? 1 : estimateDoubleBoardCombos(remaining.length, need1, need2);
-  const exhaustive = totalCombos <= 300000 && totalNeed <= 6;
-  const trials = exhaustive ? totalCombos : 50000;
+  const exhaustive = totalCombos <= mt && totalNeed <= 6;
+  const trials = exhaustive ? totalCombos : Math.min(mt, 50000);
 
   const overallEquity = new Array(nPlayers).fill(0);
   const board1Equity = new Array(nPlayers).fill(0);
@@ -3017,7 +3019,7 @@ async function runAICalculation(calc, onProgress) {
     }
 
     // Run in chunks to avoid blocking UI
-    const CHUNK = 10;
+    const CHUNK = 1;
     return new Promise((resolve, reject) => {
       let idx = 0;
       let totalHeroEq = 0, totalTrials = 0;
@@ -3033,7 +3035,7 @@ async function runAICalculation(calc, onProgress) {
           if (isDB) {
             const au = new Set([...heroHand, ...oppHand, ...board1, ...board2]);
             const rem = []; for (let i = 0; i < 52; i++) { if (!au.has(i)) rem.push(i); }
-            const r = simulateDoubleBoard(mh, board1, board2, rem);
+            const r = simulateDoubleBoard(mh, board1, board2, rem, 10000);
             heroOverall += r.overallEquity[0]; oppOverall += r.overallEquity[1];
             heroB1 += r.board1Equity[0]; oppB1 += r.board1Equity[1];
             heroB2 += r.board2Equity[0]; oppB2 += r.board2Equity[1];
@@ -3044,7 +3046,7 @@ async function runAICalculation(calc, onProgress) {
             const au = new Set([...heroHand, ...oppHand, ...bc]);
             const rem = []; for (let i = 0; i < 52; i++) { if (!au.has(i)) rem.push(i); }
             const simFn = isHoldem ? simulateHoldem : simulateOmaha;
-            const r = simFn(mh, bc, rem);
+            const r = simFn(mh, bc, rem, 10000);
             const rEq = r.equities || r.equity || [];
             totalHeroEq += (rEq[0] || 0) * r.trials;
             totalTrials += r.trials;
@@ -3678,30 +3680,76 @@ function showSyntaxHelp() {
   const isHE = gt === 'holdem';
   let html = '';
 
+  const row = (s,d) => '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;white-space:nowrap;">'+s+'</td><td style="padding:3px 8px;color:#555;">'+d+'</td></tr>';
+  const tbl = (rows) => '<table style="width:100%;font-size:12px;border-collapse:collapse;">'+rows+'</table>';
+
   if (isHE) {
-    html += '<h4 style="color:#4a7c59;margin-bottom:6px;">Hold\'em Syntax</h4>';
-    html += '<table style="width:100%;font-size:12px;border-collapse:collapse;">';
-    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">AA</td><td style="padding:3px 8px;">Pair of aces (all 6 combos)</td></tr>';
-    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">AKs</td><td style="padding:3px 8px;">Ace-king suited (4 combos)</td></tr>';
-    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">AKo</td><td style="padding:3px 8px;">Ace-king offsuit (12 combos)</td></tr>';
-    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">TT+</td><td style="padding:3px 8px;">TT, JJ, QQ, KK, AA</td></tr>';
-    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">TT-77</td><td style="padding:3px 8px;">TT, 99, 88, 77</td></tr>';
-    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">ATs+</td><td style="padding:3px 8px;">ATs, AJs, AQs, AKs</td></tr>';
-    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">15%</td><td style="padding:3px 8px;">Top 15% of starting hands</td></tr>';
-    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">5%-10%</td><td style="padding:3px 8px;">Between top 5% and 10%</td></tr>';
-    html += '</table>';
+    html += '<h4 style="color:#4a7c59;margin-bottom:4px;">Hold\'em — Specific Hands</h4>';
+    html += tbl(
+      row('AsKh','Exact cards: ace of spades, king of hearts') +
+      row('AA','Pocket aces — all 6 suit combos') +
+      row('AK','Ace-king — all 16 combos (suited + offsuit)') +
+      row('AK$s / AxKx','Ace-king suited only (4 combos)') +
+      row('AK$o / AxKy','Ace-king offsuit only (12 combos)') +
+      row('*','Random hand'));
+    html += '<h4 style="color:#4a7c59;margin:8px 0 4px;">Ranges</h4>';
+    html += tbl(
+      row('TT+','Pair TT or better: TT, JJ, QQ, KK, AA') +
+      row('TT-77','Pair range: TT, 99, 88, 77') +
+      row('ATs+','Suited ace-ten or better: ATs, AJs, AQs, AKs') +
+      row('AA,KK,AK','Multiple ranges with comma (OR)') +
+      row('15%','Top 15% of starting hands (~25 types)') +
+      row('5%-10%','Between top 5% and 10%') +
+      row('25%:xx','Top 25% AND suited') +
+      row('40%!AA-22','Top 40% excluding all pairs') +
+      row('A:15%!AA','Ace in top 15% but not pocket aces'));
+    html += '<h4 style="color:#4a7c59;margin:8px 0 4px;">Rank Notation</h4>';
+    html += tbl(
+      row('Q+','Queen, king, or ace') +
+      row('[T+][T+]','Two broadway cards') +
+      row('A-Q','Ace, king, or queen') +
+      row('[A-J][2-5]','One high card + one low card') +
+      row('J[T-]','Jack-high hand'));
   } else {
-    html += '<h4 style="color:#4a7c59;margin-bottom:6px;">Omaha (PLO) Syntax</h4>';
-    html += '<table style="width:100%;font-size:12px;border-collapse:collapse;">';
-    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">AA</td><td style="padding:3px 8px;">At least two aces + 2 random cards</td></tr>';
-    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">AAKK</td><td style="padding:3px 8px;">Two aces and two kings</td></tr>';
-    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">AA$ds</td><td style="padding:3px 8px;">Double-suited aces</td></tr>';
-    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">AA$ss</td><td style="padding:3px 8px;">Single-suited aces</td></tr>';
-    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">RROO</td><td style="padding:3px 8px;">Two-pair hand (any ranks)</td></tr>';
-    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">9876-</td><td style="padding:3px 8px;">Medium rundown</td></tr>';
-    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">*$np</td><td style="padding:3px 8px;">Any hand, no pairs</td></tr>';
-    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">20%</td><td style="padding:3px 8px;">Top 20% of PLO starting hands</td></tr>';
-    html += '</table>';
+    html += '<h4 style="color:#4a7c59;margin-bottom:4px;">PLO — Specific Hands</h4>';
+    html += tbl(
+      row('AsKhJd2c','Exact 4 cards with suits') +
+      row('AA','At least two aces (+ 2 random)') +
+      row('AAKK','Two aces + two kings') +
+      row('*','Random hand'));
+    html += '<h4 style="color:#4a7c59;margin:8px 0 4px;">Suited Patterns</h4>';
+    html += tbl(
+      row('AxAyxy / AA$ds','Double-suited aces (two suits, two each)') +
+      row('AxAyxz / AA$ss','Single-suited aces (three suits)') +
+      row('sshh','Two spades + two hearts') +
+      row('wxyz','Rainbow — all four suits (badugi)') +
+      row('hhxx','Two hearts + two of another suit') +
+      row('KJ*ss','King, jack, + two spades'));
+    html += '<h4 style="color:#4a7c59;margin:8px 0 4px;">Rank Patterns</h4>';
+    html += tbl(
+      row('RROO','Two pair hand (any ranks)') +
+      row('AARR','Aces + another pair') +
+      row('RRON','One pair + two side cards') +
+      row('JRON','Jack + three different ranks') +
+      row('AA!AAA','Exactly two aces (not three)') +
+      row('Q+','At least one Q, K, or A') +
+      row('[A-J][2-5]33','High card + low card + pair of 3s'));
+    html += '<h4 style="color:#4a7c59;margin:8px 0 4px;">Rundowns & Ranges</h4>';
+    html += tbl(
+      row('KQJT-T987','High rundowns: KQJT, QJT9, JT98, T987') +
+      row('9876-','Medium-low rundown and below') +
+      row('T8+','Ascending: T8, J9, QT, KJ, AQ') +
+      row('TT-77','Pair range: TT, 99, 88, 77') +
+      row('15%','Top 15% of starting hands') +
+      row('5%-10%','Between top 5% and 10%'));
+    html += '<h4 style="color:#4a7c59;margin:8px 0 4px;">Constraints & Combos</h4>';
+    html += tbl(
+      row('AA,KK','OR — aces or kings') +
+      row('xx:15%','AND — suited AND top 15%') +
+      row('20%!RR','NOT — top 20% excluding pairs') +
+      row('(AK,JT):xx','Grouped — AK or JT, suited') +
+      row('40%!RR','Top 40% with no paired cards') +
+      row('AA-KK@100,QQ@50','Weighted — always AA/KK, half QQ'));
   }
 
   html += '<h4 style="color:#4a7c59;margin:10px 0 6px;">Operators</h4>';
