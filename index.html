@@ -728,7 +728,15 @@ function buildFilterMenu(n, menuEl) {
     item.addEventListener('click', function(e) {
       e.stopPropagation();
       const inp = document.getElementById('hand-' + n);
-      if (inp) { inp.value = syntax; updateHandPreview(n); }
+      if (inp) {
+        inp.value = syntax;
+        inp.style.display = '';
+        inp.dataset.rangeMode = '';
+        updateHandPreview(n);
+      }
+      // Hide slider if it was showing
+      const rangeDiv = document.getElementById('range-' + n);
+      if (rangeDiv) rangeDiv.style.display = 'none';
       const tag = document.getElementById('filter-tag-' + n);
       if (tag) { tag.textContent = label; tag.title = 'PPT syntax: ' + syntax; }
       closeAllFilterMenus();
