@@ -1106,7 +1106,101 @@ function runSimulation() {
       }
     }
 
-    // Then generate range hands
+    // Check for range slots — these require iterating over the ENTIRE range
+    const rangeSlots = handSlots.filter(s => s.mode === 'range');
+
+    if (rangeSlots.length > 0 && gameType === 'holdem') {
+      // RANGE MODE: Run hero vs every hand in the range, average equities
+      if (hands.length !== 1) throw new Error('Range mode: enter exactly 1 specific hand, set opponent to Range');
+      if (rangeSlots.length !== 1) throw new Error('Range mode: only 1 range slot supported currently');
+
+      const heroHand = hands[0];
+      const slot = rangeSlots[0];
+      const lo = slot.lo || 0;
+      const hi = slot.hi || 20;
+      let rangeDesc;
+      if (lo === 0) rangeDesc = 'Top ' + hi + '%';
+      else if (hi === 100) rangeDesc = 'Bottom ' + (100 - lo) + '%';
+      else rangeDesc = lo + '-' + hi + '%';
+
+      // Get all hand types in the range
+      const total = HOLDEM_RANKINGS.length;
+      const loIdx = Math.round(total * lo / 100);
+      const hiIdx = Math.round(total * hi / 100);
+      const rangeHandTypes = HOLDEM_RANKINGS.slice(loIdx, hiIdx);
+
+      // Enumerate ALL specific combos from each hand type
+      const allOppHands = [];
+      const heroSet = new Set(heroHand);
+      const boardSet = new Set(boardCards);
+      const deadSet = new Set(deadCards);
+      const blocked = new Set([...heroSet, ...boardSet, ...deadSet]);
+
+      for (const [r1, r2, suited] of rangeHandTypes) {
+        const ri1 = r1 - 2, ri2 = r2 - 2;
+        if (r1 === r2) {
+          // Pair: all C(4,2) = 6 combos minus blocked
+          for (let s1 = 0; s1 < 4; s1++) {
+            for (let s2 = s1 + 1; s2 < 4; s2++) {
+              const c1 = ri1 * 4 + s1, c2 = ri2 * 4 + s2;
+              if (!blocked.has(c1) && !blocked.has(c2)) allOppHands.push([c1, c2]);
+            }
+          }
+        } else if (suited) {
+          for (let s = 0; s < 4; s++) {
+            const c1 = ri1 * 4 + s, c2 = ri2 * 4 + s;
+            if (!blocked.has(c1) && !blocked.has(c2)) allOppHands.push([c1, c2]);
+          }
+        } else {
+          for (let s1 = 0; s1 < 4; s1++) {
+            for (let s2 = 0; s2 < 4; s2++) {
+              if (s1 === s2) continue;
+              const c1 = ri1 * 4 + s1, c2 = ri2 * 4 + s2;
+              if (!blocked.has(c1) && !blocked.has(c2)) allOppHands.push([c1, c2]);
+            }
+          }
+        }
+      }
+
+      if (allOppHands.length === 0) throw new Error('No valid opponent hands in range');
+
+      resultsArea.innerHTML = '<p class="loading">Running ' + rangeDesc + ' range (' + allOppHands.length + ' combos)...</p>';
+
+      setTimeout(() => {
+        try {
+          let totalHeroEq = 0, totalOppEq = 0, totalTrials = 0;
+
+          for (const oppHand of allOppHands) {
+            const matchHands = [heroHand, oppHand];
+            const allUsed = new Set([...heroHand, ...oppHand, ...boardCards, ...deadCards]);
+            const rem = [];
+            for (let i = 0; i < 52; i++) { if (!allUsed.has(i)) rem.push(i); }
+            const r = simulateHoldem(matchHands, boardCards, rem);
+            totalHeroEq += r.equities[0] * r.trials;
+            totalOppEq += r.equities[1] * r.trials;
+            totalTrials += r.trials;
+          }
+
+          const heroEq = (totalHeroEq / totalTrials * 100).toFixed(2);
+          const oppEq = (totalOppEq / totalTrials * 100).toFixed(2);
+
+          let html = '<h3>Hold\'em Simulation</h3>';
+          html += '<p>' + allOppHands.length + ' opponent combos in ' + rangeDesc + ' range</p>';
+          if (boardCards.length > 0) html += '<p><strong>Board:</strong> ' + cardsToHTML(boardCards) + '</p>';
+          html += '<table class="results-table"><thead><tr><th>Hand</th><th>Equity</th></tr></thead><tbody>';
+          html += '<tr><td>Hero ' + cardsToHTML(heroHand) + '</td><td><strong>' + heroEq + '%</strong></td></tr>';
+          html += '<tr><td>' + rangeDesc + ' (' + allOppHands.length + ' combos)</td><td><strong>' + oppEq + '%</strong></td></tr>';
+          html += '</tbody></table>';
+          html += '<p style="font-size:11px;color:#888;margin-top:8px;">Range includes ' + rangeHandTypes.length + ' hand types, ' + allOppHands.length + ' specific combos after removing blocked cards.</p>';
+          resultsArea.innerHTML = html;
+        } catch (e) {
+          resultsArea.innerHTML = '<p class="error-msg">Error: ' + e.message + '</p>';
+        }
+      }, 50);
+      return; // Early return — range mode handled
+    }
+
+    // Then generate range hands (single random for non-holdem — PLO range enumeration is too expensive)
     for (const slot of handSlots) {
       if (slot.mode === 'range') {
         let hand;
@@ -2178,16 +2272,77 @@ async function runAICalculation(calc) {
     board2.forEach(c => usedCards.add(c));
   }
 
-  // Generate opponent hands
   const numOpp = calc.numOpponents || 1;
   const oppRange = calc.oppRange || 'random';
-  const oppHands = [];
-  const pctMap = { top5: 5, top10: 10, top20: 20, top30: 30, random: 100 };
+  const pctMap = { top5: 5, top10: 10, top15: 15, top20: 20, top25: 25, top30: 30, top40: 40, top50: 50, random: 100 };
   const pctile = pctMap[oppRange] || 100;
-
   const gameType = calc.gameType || 'omaha';
   const isHoldem = gameType === 'holdem';
 
+  // HOLD'EM RANGE MODE: enumerate ALL hands in the range, run equity vs each, average
+  if (isHoldem && pctile < 100 && heroHands.length === 1) {
+    const heroHand = heroHands[0];
+    const total = HOLDEM_RANKINGS.length;
+    const hiIdx = Math.max(1, Math.round(total * pctile / 100));
+    const rangeHandTypes = HOLDEM_RANKINGS.slice(0, hiIdx);
+
+    const blocked = new Set([...heroHand, ...board1]);
+
+    const allOppHands = [];
+    for (const [r1, r2, suited] of rangeHandTypes) {
+      const ri1 = r1 - 2, ri2 = r2 - 2;
+      if (r1 === r2) {
+        for (let s1 = 0; s1 < 4; s1++)
+          for (let s2 = s1 + 1; s2 < 4; s2++) {
+            const c1 = ri1*4+s1, c2 = ri2*4+s2;
+            if (!blocked.has(c1) && !blocked.has(c2)) allOppHands.push([c1,c2]);
+          }
+      } else if (suited) {
+        for (let s = 0; s < 4; s++) {
+          const c1 = ri1*4+s, c2 = ri2*4+s;
+          if (!blocked.has(c1) && !blocked.has(c2)) allOppHands.push([c1,c2]);
+        }
+      } else {
+        for (let s1 = 0; s1 < 4; s1++)
+          for (let s2 = 0; s2 < 4; s2++) {
+            if (s1 === s2) continue;
+            const c1 = ri1*4+s1, c2 = ri2*4+s2;
+            if (!blocked.has(c1) && !blocked.has(c2)) allOppHands.push([c1,c2]);
+          }
+      }
+    }
+
+    let totalHeroEq = 0, totalTrials = 0;
+    for (const oppHand of allOppHands) {
+      const mh = [heroHand, oppHand];
+      const au = new Set([...heroHand, ...oppHand, ...board1]);
+      const rem = []; for (let i = 0; i < 52; i++) { if (!au.has(i)) rem.push(i); }
+      const r = simulateHoldem(mh, board1, rem);
+      totalHeroEq += r.equities[0] * r.trials;
+      totalTrials += r.trials;
+    }
+
+    const heroEq = totalHeroEq / totalTrials;
+    const results = {
+      trials: totalTrials,
+      equities: [heroEq, 1 - heroEq],
+      wins: [Math.round(heroEq * allOppHands.length), Math.round((1-heroEq) * allOppHands.length)],
+      ties: [0, 0],
+      allHands: [heroHand],
+      board1: board1,
+      board2: [],
+      heroCount: 1,
+      gameType: 'holdem',
+      isRange: true,
+      rangeName: oppRange,
+      rangeCombos: allOppHands.length,
+      rangeTypes: rangeHandTypes.length
+    };
+    return results;
+  }
+
+  // NON-RANGE MODE: generate random opponent hands
+  const oppHands = [];
   for (let i = 0; i < numOpp; i++) {
     let hand;
     if (isHoldem) {
@@ -2196,11 +2351,8 @@ async function runAICalculation(calc) {
       if (pctile <= 30) {
         hand = generateRandomPLOHand(usedCards, pctile);
       } else {
-        // Random: just pick 4 random cards
         const avail = [];
-        for (let ci = 0; ci < 52; ci++) {
-          if (!usedCards.has(ci)) avail.push(ci);
-        }
+        for (let ci = 0; ci < 52; ci++) { if (!usedCards.has(ci)) avail.push(ci); }
         shuffleArray(avail);
         hand = avail.slice(0, 4);
       }
@@ -2210,18 +2362,13 @@ async function runAICalculation(calc) {
   }
 
   const allHands = heroHands.concat(oppHands);
-
-  // Build remaining deck
   const allUsed = new Set();
   allHands.forEach(h => h.forEach(c => allUsed.add(c)));
   board1.forEach(c => allUsed.add(c));
   board2.forEach(c => allUsed.add(c));
   const remaining = [];
-  for (let i = 0; i < 52; i++) {
-    if (!allUsed.has(i)) remaining.push(i);
-  }
+  for (let i = 0; i < 52; i++) { if (!allUsed.has(i)) remaining.push(i); }
 
-  // Run simulation
   let results;
   if (gameType === 'doubleBoard') {
     results = simulateDoubleBoard(allHands, board1, board2, remaining);
@@ -2243,6 +2390,17 @@ async function runAICalculation(calc) {
 function formatCalcResultsForClaude(calc, results) {
   let msg = '[CALCULATION RESULTS - Do NOT output another |||CALC||| block. Analyze these results for the user.]\n\n';
   msg += 'Game Type: ' + results.gameType + '\n';
+
+  if (results.isRange) {
+    // Range mode results
+    if (results.board1.length > 0) msg += 'Board: ' + cardsToStr(results.board1) + '\n';
+    msg += 'Range: ' + results.rangeName + ' (' + results.rangeTypes + ' hand types, ' + results.rangeCombos + ' combos)\n\n';
+    msg += 'Hero (' + cardsToStr(results.allHands[0]) + '): Equity = ' + (results.equities[0] * 100).toFixed(2) + '%\n';
+    msg += results.rangeName + ' range: Equity = ' + (results.equities[1] * 100).toFixed(2) + '%\n';
+    msg += '\nThis is the ACTUAL equity against the ENTIRE ' + results.rangeName + ' range (' + results.rangeCombos + ' opponent hand combos), not a single random hand.\n';
+    return msg;
+  }
+
   msg += 'Trials: ' + results.trials.toLocaleString() + ' (' + (results.exhaustive ? 'exhaustive' : 'Monte Carlo') + ')\n';
 
   if (results.board1.length > 0) msg += 'Board 1: ' + cardsToStr(results.board1) + '\n';
@@ -2259,7 +2417,7 @@ function formatCalcResultsForClaude(calc, results) {
       msg += 'Board2=' + (results.board2Equity[i] * 100).toFixed(2) + '%, ';
       msg += 'Scoop=' + (results.scoopPct[i] * 100).toFixed(2) + '%\n';
     } else {
-      msg += label + ' (' + handStr + '): Equity=' + (results.equity[i] * 100).toFixed(2) + '%';
+      msg += label + ' (' + handStr + '): Equity=' + (results.equities[i] * 100).toFixed(2) + '%';
       msg += ', Win=' + (results.wins[i] / results.trials * 100).toFixed(2) + '%';
       msg += ', Tie=' + (results.ties[i] / results.trials * 100).toFixed(2) + '%\n';
     }
@@ -2270,6 +2428,18 @@ function formatCalcResultsForClaude(calc, results) {
 
 function renderCalcResultsHTML(calc, results) {
   let html = '<strong>Calculation Results</strong><br>';
+
+  if (results.isRange) {
+    html += '<span style="font-size:11px;color:#888;">vs ' + results.rangeName + ' range (' + results.rangeCombos + ' combos, ' + results.rangeTypes + ' hand types)</span><br><br>';
+    if (results.board1.length > 0) html += 'Board: <strong>' + cardsToHTML(results.board1) + '</strong><br><br>';
+    html += '<table><tr><th>Hand</th><th>Equity</th></tr>';
+    html += '<tr><td>Hero ' + cardsToHTML(results.allHands[0]) + '</td><td><strong>' + (results.equities[0]*100).toFixed(2) + '%</strong></td></tr>';
+    html += '<tr><td>' + results.rangeName + ' range</td><td><strong>' + (results.equities[1]*100).toFixed(2) + '%</strong></td></tr>';
+    html += '</table>';
+    html += '<p style="font-size:11px;color:#666;margin-top:6px;">Equity calculated against ALL ' + results.rangeCombos + ' possible opponent holdings in the ' + results.rangeName + ' range.</p>';
+    return html;
+  }
+
   html += '<span style="font-size:11px;color:#888;">' + results.trials.toLocaleString() + ' trials (' + (results.exhaustive ? 'exhaustive' : 'Monte Carlo') + ')</span><br><br>';
 
   if (results.board1.length > 0) html += 'Board 1: <strong>' + cardsToHTML(results.board1) + '</strong><br>';
