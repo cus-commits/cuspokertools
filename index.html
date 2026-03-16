@@ -788,15 +788,19 @@ function toggleFilterMenu(n) {
   if (menu && !wasOpen) {
     menu.innerHTML = buildFilterMenuHTML(n);
     menu.classList.add('open');
-    // Use event delegation for submenu toggle — handles rebuilt HTML reliably
+    // Use event delegation for submenu toggle
     menu.addEventListener('click', function(e) {
-      const hasSub = e.target.closest('.has-sub');
-      if (hasSub && menu.contains(hasSub)) {
+      // Only toggle submenu if clicked on the parent item itself, not a child leaf
+      const clickedItem = e.target.closest('.filter-item');
+      if (!clickedItem) return;
+      // If this item is inside a .filter-sub, it's a leaf — let its onclick fire
+      if (clickedItem.closest('.filter-sub')) return;
+      // If this item has a submenu, toggle it
+      if (clickedItem.classList.contains('has-sub')) {
         e.stopPropagation();
-        const sub = hasSub.querySelector('.filter-sub');
+        const sub = clickedItem.querySelector('.filter-sub');
         if (sub) {
           const isOpen = sub.classList.contains('open');
-          // Close all other open subs in this menu
           menu.querySelectorAll('.filter-sub.open').forEach(s => s.classList.remove('open'));
           if (!isOpen) sub.classList.add('open');
         }
@@ -1192,78 +1196,83 @@ function runSimulation() {
           combosToRun = allOppHands.slice(0, 80);
         }
 
-        resultsArea.innerHTML = '<p class="loading">Running vs ' + rangeDesc + ' (' + combosToRun.length + (combosToRun.length < allOppHands.length ? ' of ' + allOppHands.length : '') + ' combos)...</p>';
+        // Chunked async range calculation with live progress
+        const isDB = gameType === 'doubleboard';
+        const isOmaha2 = gameType === 'omaha' || isDB;
+        const CHUNK2 = 5;
+        let idx2 = 0;
+        let totalHeroEq2 = 0, totalOppEq2 = 0, totalTrials2 = 0;
+        let heroOverall2 = 0, oppOverall2 = 0;
+        let heroB12 = 0, oppB12 = 0, heroB22 = 0, oppB22 = 0;
+        let heroScoop2 = 0, oppScoop2 = 0;
 
-        setTimeout(() => {
-          try {
-            let totalHeroEq = 0, totalOppEq = 0, totalTrials = 0;
-            const isDB = gameType === 'doubleboard';
-            const isOmaha = gameType === 'omaha' || isDB;
-
+        function processRangeChunk() {
+          const end2 = Math.min(idx2 + CHUNK2, combosToRun.length);
+          for (; idx2 < end2; idx2++) {
+            const oppHand = combosToRun[idx2];
+            const mh = [heroHand, oppHand];
             if (isDB) {
-              let heroOverall = 0, oppOverall = 0;
-              let heroB1 = 0, oppB1 = 0, heroB2 = 0, oppB2 = 0;
-              let heroScoop = 0, oppScoop = 0;
-              for (const oppHand of combosToRun) {
-                const matchHands = [heroHand, oppHand];
-                const allUsedInner = new Set([...heroHand, ...oppHand, ...board1Cards, ...board2Cards, ...deadCards]);
-                const rem = []; for (let i = 0; i < 52; i++) { if (!allUsedInner.has(i)) rem.push(i); }
-                const r = simulateDoubleBoard(matchHands, board1Cards, board2Cards, rem);
-                heroOverall += r.overallEquity[0]; oppOverall += r.overallEquity[1];
-                heroB1 += r.board1Equity[0]; oppB1 += r.board1Equity[1];
-                heroB2 += r.board2Equity[0]; oppB2 += r.board2Equity[1];
-                heroScoop += r.scoopPct[0]; oppScoop += r.scoopPct[1];
-                totalTrials += r.trials;
-              }
-              const n = allOppHands.length;
-              let html = '<h3>Double Board PLO vs Range</h3>';
-              html += '<p>vs ' + rangeDesc + ' (' + n + ' combos)</p>';
+              const au = new Set([...heroHand, ...oppHand, ...board1Cards, ...board2Cards, ...deadCards]);
+              const rem = []; for (let i = 0; i < 52; i++) { if (!au.has(i)) rem.push(i); }
+              const r = simulateDoubleBoard(mh, board1Cards, board2Cards, rem);
+              heroOverall2 += r.overallEquity[0]; oppOverall2 += r.overallEquity[1];
+              heroB12 += r.board1Equity[0]; oppB12 += r.board1Equity[1];
+              heroB22 += r.board2Equity[0]; oppB22 += r.board2Equity[1];
+              heroScoop2 += r.scoopPct[0]; oppScoop2 += r.scoopPct[1];
+              totalTrials2 += r.trials;
+            } else {
+              const bc = boardCards;
+              const au = new Set([...heroHand, ...oppHand, ...bc, ...deadCards]);
+              const rem = []; for (let i = 0; i < 52; i++) { if (!au.has(i)) rem.push(i); }
+              const r = isOmaha2 ? simulateOmaha(mh, bc, rem) : simulateHoldem(mh, bc, rem);
+              const rEq = r.equities || r.equity || [];
+              totalHeroEq2 += (rEq[0] || 0) * r.trials;
+              totalOppEq2 += (rEq[1] || 0) * r.trials;
+              totalTrials2 += r.trials;
+            }
+          }
+          // Update progress in results area
+          const pct = Math.round(idx2 / combosToRun.length * 100);
+          const bar = '█'.repeat(Math.round(pct / 5)) + '░'.repeat(20 - Math.round(pct / 5));
+          const runEq = isDB ? (idx2 > 0 ? (heroOverall2/idx2*100).toFixed(1) : '...') : (totalTrials2 > 0 ? (totalHeroEq2/totalTrials2*100).toFixed(1) : '...');
+          resultsArea.innerHTML = '<p class="loading">⏳ ' + idx2 + '/' + combosToRun.length + ' combos [' + bar + '] ' + pct + '%<br>📊 Running equity: ' + runEq + '%</p>';
+
+          if (idx2 < combosToRun.length) {
+            setTimeout(processRangeChunk, 0);
+          } else {
+            // Done — render results
+            const n = combosToRun.length;
+            const gameNames = { holdem: "Hold'em", omaha: 'Omaha (PLO4)', doubleboard: 'Double Board PLO' };
+            let html = '<h3>' + gameNames[gameType] + ' vs Range</h3>';
+            html += '<p>vs ' + rangeDesc + ' (' + allOppHands.length + ' combos after card removal)</p>';
+            if (isDB) {
               if (board1Cards.length > 0) html += '<p><strong>Board 1:</strong> ' + cardsToHTML(board1Cards) + '</p>';
               if (board2Cards.length > 0) html += '<p><strong>Board 2:</strong> ' + cardsToHTML(board2Cards) + '</p>';
               html += '<table class="results-table"><thead><tr><th>Hand</th><th>Overall</th><th>Board 1</th><th>Board 2</th><th>Scoop%</th></tr></thead><tbody>';
               html += '<tr><td>Hero ' + cardsToHTML(heroHand) + '</td>';
-              html += '<td><strong>' + (heroOverall/n*100).toFixed(2) + '%</strong></td>';
-              html += '<td>' + (heroB1/n*100).toFixed(2) + '%</td>';
-              html += '<td>' + (heroB2/n*100).toFixed(2) + '%</td>';
-              html += '<td>' + (heroScoop/n*100).toFixed(2) + '%</td></tr>';
-              html += '<tr><td>' + rangeDesc + ' (' + n + ' combos)</td>';
-              html += '<td><strong>' + (oppOverall/n*100).toFixed(2) + '%</strong></td>';
-              html += '<td>' + (oppB1/n*100).toFixed(2) + '%</td>';
-              html += '<td>' + (oppB2/n*100).toFixed(2) + '%</td>';
-              html += '<td>' + (oppScoop/n*100).toFixed(2) + '%</td></tr>';
+              html += '<td><strong>' + (heroOverall2/n*100).toFixed(2) + '%</strong></td>';
+              html += '<td>' + (heroB12/n*100).toFixed(2) + '%</td>';
+              html += '<td>' + (heroB22/n*100).toFixed(2) + '%</td>';
+              html += '<td>' + (heroScoop2/n*100).toFixed(2) + '%</td></tr>';
+              html += '<tr><td>' + rangeDesc + '</td>';
+              html += '<td><strong>' + (oppOverall2/n*100).toFixed(2) + '%</strong></td>';
+              html += '<td>' + (oppB12/n*100).toFixed(2) + '%</td>';
+              html += '<td>' + (oppB22/n*100).toFixed(2) + '%</td>';
+              html += '<td>' + (oppScoop2/n*100).toFixed(2) + '%</td></tr>';
               html += '</tbody></table>';
-              resultsArea.innerHTML = html;
             } else {
-              for (const oppHand of combosToRun) {
-                const matchHands = [heroHand, oppHand];
-                const bc = boardCards;
-                const allUsedInner = new Set([...heroHand, ...oppHand, ...bc, ...deadCards]);
-                const rem = []; for (let i = 0; i < 52; i++) { if (!allUsedInner.has(i)) rem.push(i); }
-                const r = isOmaha ? simulateOmaha(matchHands, bc, rem) : simulateHoldem(matchHands, bc, rem);
-                const rEq2 = r.equities || r.equity || [];
-                totalHeroEq += (rEq2[0] || 0) * r.trials;
-                totalOppEq += (rEq2[1] || 0) * r.trials;
-                totalTrials += r.trials;
-              }
-
-              const heroEq = (totalHeroEq / totalTrials * 100).toFixed(2);
-              const oppEq = (totalOppEq / totalTrials * 100).toFixed(2);
-
-              const gameNames = { holdem: "Hold'em", omaha: 'Omaha (PLO4)', doubleboard: 'Double Board PLO' };
-              let html = '<h3>' + gameNames[gameType] + ' vs Range</h3>';
-              html += '<p>vs ' + rangeDesc + ' (' + allOppHands.length + ' combos)</p>';
+              const heroEq = (totalHeroEq2 / totalTrials2 * 100).toFixed(2);
+              const oppEq = (totalOppEq2 / totalTrials2 * 100).toFixed(2);
               if (boardCards.length > 0) html += '<p><strong>Board:</strong> ' + cardsToHTML(boardCards) + '</p>';
               html += '<table class="results-table"><thead><tr><th>Hand</th><th>Equity</th></tr></thead><tbody>';
               html += '<tr><td>Hero ' + cardsToHTML(heroHand) + '</td><td><strong>' + heroEq + '%</strong></td></tr>';
-              html += '<tr><td>' + rangeDesc + ' (' + allOppHands.length + ' combos)</td><td><strong>' + oppEq + '%</strong></td></tr>';
+              html += '<tr><td>' + rangeDesc + '</td><td><strong>' + oppEq + '%</strong></td></tr>';
               html += '</tbody></table>';
-              html += '<p style="font-size:11px;color:#888;margin-top:8px;">' + allOppHands.length + ' specific combos after removing blocked cards.</p>';
-              resultsArea.innerHTML = html;
             }
-          } catch (e) {
-            resultsArea.innerHTML = '<p class="error-msg">Error: ' + e.message + '</p>';
+            resultsArea.innerHTML = html;
           }
-        }, 50);
+        }
+        processRangeChunk();
         return; // Early return — PPT range mode handled
       }
 
