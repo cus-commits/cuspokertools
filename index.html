@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>cusPokerTools - Poker Equity Calculator</title>
+<link rel="icon" type="image/png" href="gorn.png">
+<link rel="apple-touch-icon" href="gorn.png">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #333; background: #f5f5f5; }
@@ -3109,7 +3111,7 @@ function formatCalcResultsForClaude(calc, results) {
   if (results.isRange) {
     // Range mode results
     if (results.board1.length > 0) msg += 'Board: ' + cardsToStr(results.board1) + '\n';
-    msg += 'Range: ' + results.rangeName + ' (' + results.rangeTypes + ' hand types, ' + results.rangeCombos + ' combos)\n\n';
+    msg += 'Range: ' + results.rangeName + ' (' + results.rangeCombos + ' combos after card removal)\n\n';
     const eqRange = results.equities || results.equity || [];
     msg += 'Hero (' + cardsToStr(results.allHands[0]) + '): Equity = ' + ((eqRange[0] || 0) * 100).toFixed(2) + '%\n';
     msg += results.rangeName + ' range: Equity = ' + ((eqRange[1] || 0) * 100).toFixed(2) + '%\n';
@@ -3147,7 +3149,7 @@ function renderCalcResultsHTML(calc, results) {
   let html = '<strong>Calculation Results</strong><br>';
 
   if (results.isRange) {
-    html += '<span style="font-size:11px;color:#888;">vs ' + results.rangeName + ' range (' + results.rangeCombos + ' combos, ' + results.rangeTypes + ' hand types)</span><br><br>';
+    html += '<span style="font-size:11px;color:#888;">vs ' + results.rangeName + ' range (' + results.rangeCombos + ' combos after card removal)</span><br><br>';
     if (results.board1.length > 0) html += 'Board: <strong>' + cardsToHTML(results.board1) + '</strong><br><br>';
     const eqRng = results.equities || results.equity || [];
     html += '<table><tr><th>Hand</th><th>Equity</th></tr>';
