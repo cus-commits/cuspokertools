@@ -70,20 +70,17 @@ select { font-family: Arial, sans-serif; cursor: pointer; }
 }
 .range-controls .range-label { font-size: 11px; font-weight: bold; color: #4a7c59; min-width: 80px; text-align: center; line-height: 1.2; }
 
-/* Syntax filter dropdown */
+/* Syntax filter dropdown — flat list, no submenus */
 .filter-btn { font-size: 11px; padding: 3px 6px; border: 1px solid #999; border-radius: 3px; background: #f0f0f0; cursor: pointer; color: #555; white-space: nowrap; position: relative; }
 .filter-btn:hover { background: #e0e0e0; }
-.filter-menu { display: none; position: absolute; top: 100%; left: 0; background: white; border: 1px solid #aaa; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 500; min-width: 180px; max-height: 350px; overflow-y: auto; font-size: 12px; }
+.filter-menu { display: none; position: absolute; top: 100%; left: 0; background: white; border: 1px solid #aaa; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 500; min-width: 220px; max-height: 400px; overflow-y: auto; font-size: 12px; }
 .filter-menu.open { display: block; }
-.filter-item { padding: 6px 12px; cursor: pointer; white-space: nowrap; display: flex; justify-content: space-between; align-items: center; }
+.filter-item { padding: 7px 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
 .filter-item:hover { background: #e8f5e9; }
+.filter-item:active { background: #c8e6c9; }
 .filter-item .syntax { color: #888; font-family: monospace; font-size: 11px; margin-left: 12px; }
-.filter-sep { border-top: 1px solid #ddd; margin: 4px 0; }
-.filter-item.has-sub { position: relative; }
-.filter-item.has-sub::after { content: '▸'; margin-left: 8px; color: #999; }
-.filter-sub { display: none; position: absolute; left: 100%; top: 0; background: white; border: 1px solid #aaa; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); min-width: 140px; z-index: 501; }
-.filter-sub.open { display: block; }
-.filter-sub .filter-item { padding: 5px 10px; }
+.filter-sep { border-top: 1px solid #ddd; margin: 2px 0; }
+.filter-header { padding: 5px 12px; font-size: 10px; font-weight: 700; color: #4a7c59; text-transform: uppercase; letter-spacing: 0.5px; background: #f5f5f5; }
 .more-hands { color: #2a6e3f; cursor: pointer; font-size: 12px; text-decoration: underline; margin: 6px 0; display: inline-block; }
 .more-hands:hover { color: #1a5e2f; }
 .hand-preview { font-size: 12px; min-height: 16px; padding: 2px 0; margin: -4px 0 2px 66px; }
@@ -481,9 +478,8 @@ function addHandSlot() {
     '<span class="hand-label">hand ' + n + ':</span>' +
     '<input type="text" id="hand-' + n + '" placeholder="' + ph + '">' +
     '<button class="card-picker-btn" onclick="openCardPicker(\'hand-' + n + '\')" title="Pick cards">&#127183;</button>' +
-    '<span style="position:relative;display:inline-block;"><button class="filter-btn" onclick="toggleFilterMenu(' + n + ')" title="Range filters">▼ Filter</button>' +
-    '<div class="filter-menu" id="filter-menu-' + n + '">' + buildFilterMenuHTML(n) + '</div></span>' +
-    '<button class="mode-toggle" id="mode-' + n + '" onclick="toggleHandMode(' + n + ')" title="Switch to Range mode">Range</button>' +
+    '<span style="position:relative;display:inline-block;"><button class="filter-btn" id="filter-btn-' + n + '" title="Range filters">▼ Filter</button>' +
+    '<div class="filter-menu" id="filter-menu-' + n + '"></div></span>' +
     '<button class="remove-btn" onclick="removeHand(' + n + ')" title="Remove">&times;</button>' +
     '<div class="hand-preview" id="preview-' + n + '"></div>' +
     '<div class="filter-tag" id="filter-tag-' + n + '"></div>' +
@@ -500,8 +496,17 @@ function addHandSlot() {
   // Attach input listener for colored hand preview
   const handInput = document.getElementById('hand-' + n);
   if (handInput) {
-    handInput.addEventListener('input', function() {
-      updateHandPreview(n);
+    handInput.addEventListener('input', function() { updateHandPreview(n); });
+  }
+  // Attach filter button — build menu with real DOM listeners, not inline onclick
+  const filterBtn = document.getElementById('filter-btn-' + n);
+  if (filterBtn) {
+    filterBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      closeAllFilterMenus();
+      const menu = document.getElementById('filter-menu-' + n);
+      buildFilterMenu(n, menu);
+      menu.classList.add('open');
     });
   }
 }
@@ -695,106 +700,115 @@ function genOffsuitHoldemHand(r1, r2, used) {
   return null;
 }
 
-function buildFilterMenuHTML(n) {
+function closeAllFilterMenus() {
+  document.querySelectorAll('.filter-menu.open').forEach(m => { m.classList.remove('open'); m.innerHTML = ''; });
+}
+
+function buildFilterMenu(n, menuEl) {
+  menuEl.innerHTML = '';
   const gt = document.getElementById('game-type')?.value || 'omaha';
   const isHE = gt === 'holdem';
-  let html = '';
 
-  // Helper to make leaf items
-  const leaf = (syntax, label) => '<div class="filter-item" onclick="event.stopPropagation(); applyFilter('+n+',\''+syntax+'\',\''+label+'\')">' + label + ' <span class="syntax">' + syntax + '</span></div>';
-  const sub = (title, items) => '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">' + title + '<div class="filter-sub">' + items + '</div></div>';
+  function addHeader(text) {
+    const h = document.createElement('div');
+    h.className = 'filter-header';
+    h.textContent = text;
+    menuEl.appendChild(h);
+  }
+  function addSep() {
+    const s = document.createElement('div');
+    s.className = 'filter-sep';
+    menuEl.appendChild(s);
+  }
+  function addItem(label, syntax, tooltip) {
+    const item = document.createElement('div');
+    item.className = 'filter-item';
+    item.innerHTML = label + ' <span class="syntax">' + syntax + '</span>';
+    if (tooltip) item.title = tooltip;
+    item.addEventListener('click', function(e) {
+      e.stopPropagation();
+      const inp = document.getElementById('hand-' + n);
+      if (inp) { inp.value = syntax; updateHandPreview(n); }
+      const tag = document.getElementById('filter-tag-' + n);
+      if (tag) { tag.textContent = label; tag.title = 'PPT syntax: ' + syntax; }
+      closeAllFilterMenus();
+    });
+    menuEl.appendChild(item);
+  }
+  function addPctSlider() {
+    // Show the range slider for this hand
+    const inp = document.getElementById('hand-' + n);
+    const rangeDiv = document.getElementById('range-' + n);
+    if (inp) inp.style.display = 'none';
+    if (rangeDiv) rangeDiv.style.display = 'flex';
+    if (inp) inp.dataset.rangeMode = 'true';
+    updateDualRange(n);
+    closeAllFilterMenus();
+  }
 
   if (!isHE) {
-    // ── PLO FILTERS ──
-    html += sub('Contains Pair',
-      ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].map(r => leaf(r+r, r+r)).join(''));
-    html += leaf('RROO', 'Two Pair');
-    html += leaf('AARR', 'Aces + Pair');
-    html += '<div class="filter-sep"></div>';
-    html += sub('Suited',
-      leaf('AA$ds', 'Double Suited Aces') +
-      leaf('*$ds', 'Any Double Suited') +
-      leaf('AA$ss', 'Single Suited Aces') +
-      leaf('*$ss', 'Any Single Suited') +
-      leaf('wxyz', 'Rainbow/Badugi'));
-    html += '<div class="filter-sep"></div>';
-    html += sub('Rundowns',
-      leaf('AKQJ-T987', 'High Rundown') +
-      leaf('9876-', 'Medium Rundown') +
-      leaf('*$0g', '0-Gap Connected') +
-      leaf('*$1g', '1-Gap') +
-      leaf('*$2g', '2-Gap'));
-    html += '<div class="filter-sep"></div>';
-    html += leaf('*$np', 'No Pairs');
-    html += leaf('*$nt', 'No Trips');
-    html += leaf('AA!AAA', 'Exactly 2 Aces');
-    html += '<div class="filter-sep"></div>';
-    html += sub('Top % of Hands',
-      ['5','10','15','20','25','30','40','50'].map(p => leaf(p+'%', 'Top '+p+'%')).join(''));
-    html += sub('Bottom % of Hands',
-      ['50','60','70','80','90','95'].map(p => leaf(p+'%-100%', 'Bottom '+(100-parseInt(p))+'%')).join(''));
-    html += '<div class="filter-sep"></div>';
-    html += leaf('*', 'Random');
+    // PLO
+    addHeader('Pairs');
+    ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].forEach(r => addItem(r+r, r+r, 'Hand with at least two ' + r + 's'));
+    addItem('Two Pair', 'RROO', 'Hand with two pairs');
+    addItem('Aces + Pair', 'AARR', 'Two aces plus another pair');
+    addSep();
+    addHeader('Suited');
+    addItem('Double Suited Aces', 'AA$ds', 'Aces with two suits, two cards each');
+    addItem('Any Double Suited', '*$ds', 'Any hand with two suits');
+    addItem('Single Suited Aces', 'AA$ss', 'Aces with one dominant suit');
+    addItem('Any Single Suited', '*$ss', 'Any single-suited hand');
+    addItem('Rainbow/Badugi', 'wxyz', 'All four suits');
+    addSep();
+    addHeader('Rundowns');
+    addItem('High Rundown', 'AKQJ-T987', 'Connected AKQJ down to T987');
+    addItem('Medium Rundown', '9876-', 'Medium-low connected cards');
+    addItem('0-Gap Connected', '*$0g', 'Four connected cards');
+    addItem('1-Gap', '*$1g', 'One gap in connectivity');
+    addItem('2-Gap', '*$2g', 'Two gaps in connectivity');
+    addSep();
+    addHeader('Constraints');
+    addItem('No Pairs', '*$np', 'No paired cards');
+    addItem('No Trips', '*$nt', 'No three of a kind');
+    addItem('Exactly 2 Aces', 'AA!AAA', 'Two aces but not three');
+    addSep();
+    addHeader('% of Hands');
+    ['5','10','15','20','25','30','40','50'].forEach(p => addItem('Top ' + p + '%', p + '%', 'Top ' + p + '% of starting hands'));
+    // Add slider option
+    const sliderItem = document.createElement('div');
+    sliderItem.className = 'filter-item';
+    sliderItem.innerHTML = '<strong>Custom % slider</strong>';
+    sliderItem.addEventListener('click', function(e) { e.stopPropagation(); addPctSlider(); });
+    menuEl.appendChild(sliderItem);
+    addSep();
+    addItem('Random', '*', 'Any random hand');
   } else {
-    // ── HOLD'EM FILTERS ──
-    html += sub('Pairs',
-      ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].map(r => leaf(r+r, r+r)).join('') +
-      '<div class="filter-sep"></div>' +
-      leaf('TT+', 'TT+') + leaf('77+', '77+') + leaf('22+', 'Any Pair'));
-    html += sub('Broadway',
-      [['A','K'],['A','Q'],['A','J'],['K','Q'],['K','J'],['Q','J'],['J','T']].map(([a,b]) => leaf(a+b, a+b)).join(''));
-    html += sub('Suited',
-      leaf('AK$s','AKs') + leaf('AQ$s','AQs') + leaf('AJ$s','AJs') +
-      leaf('KQ$s','KQs') + leaf('KJ$s','KJs') + leaf('QJ$s','QJs') + leaf('JT$s','JTs'));
-    html += sub('Offsuit',
-      leaf('AK$o','AKo') + leaf('AQ$o','AQo') + leaf('KQ$o','KQo'));
-    html += '<div class="filter-sep"></div>';
-    html += sub('Top % of Hands',
-      ['5','10','15','20','25','30','40','50'].map(p => leaf(p+'%', 'Top '+p+'%')).join(''));
-    html += '<div class="filter-sep"></div>';
-    html += leaf('*', 'Random');
-  }
-  return html;
-}
-
-function toggleSubMenu(e, el) {
-  e.stopPropagation();
-  const sub = el.querySelector('.filter-sub');
-  if (!sub) return;
-  const isOpen = sub.classList.contains('open');
-  // Close all other submenus in this menu
-  const menu = el.closest('.filter-menu');
-  if (menu) menu.querySelectorAll('.filter-sub.open').forEach(s => s.classList.remove('open'));
-  if (!isOpen) sub.classList.add('open');
-}
-
-function toggleFilterMenu(n) {
-  const menu = document.getElementById('filter-menu-' + n);
-  const wasOpen = menu && menu.classList.contains('open');
-  document.querySelectorAll('.filter-menu.open').forEach(m => m.classList.remove('open'));
-  document.querySelectorAll('.filter-sub.open').forEach(s => s.classList.remove('open'));
-  if (menu && !wasOpen) {
-    menu.innerHTML = buildFilterMenuHTML(n);
-    menu.classList.add('open');
+    // Hold'em
+    addHeader('Pairs');
+    ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].forEach(r => addItem(r+r, r+r, 'Pocket ' + r + 's'));
+    addItem('TT+', 'TT+', 'Tens or better');
+    addItem('77+', '77+', 'Sevens or better');
+    addItem('Any Pair', '22+', 'Any pocket pair');
+    addSep();
+    addHeader('Unpaired');
+    [['A','K'],['A','Q'],['A','J'],['K','Q'],['K','J'],['Q','J'],['J','T']].forEach(([a,b]) => addItem(a+b, a+b, a+b + ' suited or offsuit'));
+    addSep();
+    addHeader('Suited');
+    [['A','K'],['A','Q'],['A','J'],['K','Q'],['K','J'],['Q','J'],['J','T']].forEach(([a,b]) => addItem(a+b+'s', a+b+'$s', a+b + ' suited'));
+    addSep();
+    addHeader('% of Hands');
+    ['5','10','15','20','25','30','40','50'].forEach(p => addItem('Top ' + p + '%', p + '%', 'Top ' + p + '% of starting hands'));
+    const sliderItem = document.createElement('div');
+    sliderItem.className = 'filter-item';
+    sliderItem.innerHTML = '<strong>Custom % slider</strong>';
+    sliderItem.addEventListener('click', function(e) { e.stopPropagation(); addPctSlider(); });
+    menuEl.appendChild(sliderItem);
+    addSep();
+    addItem('Random', '*', 'Any random hand');
   }
 }
 
-function applyFilter(n, syntax, description) {
-  // Simply insert PPT syntax into the hand input. The calculator's parser handles the rest.
-  const inp = document.getElementById('hand-' + n);
-  if (inp) {
-    inp.value = syntax;
-    updateHandPreview(n);
-  }
-  const tag = document.getElementById('filter-tag-' + n);
-  if (tag) {
-    tag.textContent = description || syntax;
-    tag.title = 'PPT syntax: ' + syntax;
-  }
-  // Close all menus
-  document.querySelectorAll('.filter-sub.open').forEach(s => s.classList.remove('open'));
-  document.querySelectorAll('.filter-menu.open').forEach(m => m.classList.remove('open'));
-}
+// applyFilter removed — handled inline by buildFilterMenu DOM listeners
 
 function applyRangeFilter(n, lo, hi) {
   // Switch to range mode and set the slider
@@ -829,8 +843,7 @@ function applyRangeFilter(n, lo, hi) {
 // Close filter menus when clicking outside
 document.addEventListener('click', function(e) {
   if (!e.target.closest('.filter-btn') && !e.target.closest('.filter-menu')) {
-    document.querySelectorAll('.filter-menu.open').forEach(m => m.classList.remove('open'));
-    document.querySelectorAll('.filter-sub.open').forEach(s => s.classList.remove('open'));
+    closeAllFilterMenus();
   }
 });
 
