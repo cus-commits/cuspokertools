@@ -86,6 +86,8 @@ select { font-family: Arial, sans-serif; cursor: pointer; }
 .filter-sub .filter-item { padding: 5px 10px; }
 .more-hands { color: #2a6e3f; cursor: pointer; font-size: 12px; text-decoration: underline; margin: 6px 0; display: inline-block; }
 .more-hands:hover { color: #1a5e2f; }
+.hand-preview { font-size: 12px; min-height: 16px; padding: 2px 0; margin: -4px 0 2px 66px; }
+.filter-tag { font-size: 10px; color: #4a7c59; font-style: italic; margin: -2px 0 2px 66px; }
 
 /* Buttons */
 .btn-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
@@ -156,6 +158,8 @@ table.results-table .equity-cell { font-weight: bold; }
 .card-picker-cell:hover:not(.cp-disabled) { background: #f0f8f2; border-color: #4a7c59; }
 .card-picker-cell.cp-selected { background: #c8e6c9; border: 2px solid #4a7c59; }
 .card-picker-cell.cp-disabled { opacity: 0.3; cursor: not-allowed; background: #eee; }
+.card-picker-cell { touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+.card-picker-cell:active:not(.cp-disabled) { transform: scale(0.92); }
 .card-picker-cell.cp-suit-s { color: #000; }
 .card-picker-cell.cp-suit-h { color: #e00; }
 .card-picker-cell.cp-suit-d { color: #00c; }
@@ -381,6 +385,7 @@ table.results-table .equity-cell { font-weight: bold; }
         <button class="btn" onclick="countCombos()">Count</button>
         <button class="btn" onclick="rankHand()">Rank</button>
         <button class="btn" onclick="toEnglish()">To English</button>
+        <button class="btn" onclick="showSyntaxHelp()">Syntax</button>
       </div>
       <div id="left-info" style="margin-top:10px; font-size:12px; color:#555;"></div>
     </div>
@@ -414,6 +419,17 @@ table.results-table .equity-cell { font-weight: bold; }
         <span id="history-toggle-icon">&#9660;</span>
       </div>
       <div class="ai-history-body" id="ai-history-body" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Syntax Help Modal -->
+<div class="modal-overlay" id="syntax-modal">
+  <div class="modal-box" style="width:520px;max-height:85vh;overflow-y:auto;">
+    <h3>PPT Syntax Reference</h3>
+    <div id="syntax-modal-body" style="font-size:12px;line-height:1.6;"></div>
+    <div class="modal-btns" style="margin-top:12px;">
+      <button class="modal-save" onclick="closeSyntaxModal()">Close</button>
     </div>
   </div>
 </div>
@@ -469,16 +485,25 @@ function addHandSlot() {
     '<div class="filter-menu" id="filter-menu-' + n + '">' + buildFilterMenuHTML(n) + '</div></span>' +
     '<button class="mode-toggle" id="mode-' + n + '" onclick="toggleHandMode(' + n + ')" title="Switch to Range mode">Range</button>' +
     '<button class="remove-btn" onclick="removeHand(' + n + ')" title="Remove">&times;</button>' +
+    '<div class="hand-preview" id="preview-' + n + '"></div>' +
+    '<div class="filter-tag" id="filter-tag-' + n + '"></div>' +
     '<div class="range-controls" id="range-' + n + '" style="display:none;">' +
       '<div class="range-slider-wrap">' +
         '<div class="range-slider-track"></div>' +
         '<div class="range-slider-fill" id="range-fill-' + n + '"></div>' +
-        '<input type="range" id="range-lo-' + n + '" min="0" max="100" value="0" oninput="updateDualRange(' + n + ')">' +
-        '<input type="range" id="range-hi-' + n + '" min="0" max="100" value="20" oninput="updateDualRange(' + n + ')">' +
+        '<input type="range" id="range-lo-' + n + '" min="0" max="100" value="80" oninput="updateDualRange(' + n + ')">' +
+        '<input type="range" id="range-hi-' + n + '" min="0" max="100" value="100" oninput="updateDualRange(' + n + ')">' +
       '</div>' +
       '<span class="range-label" id="range-val-' + n + '">Top 20%</span>' +
     '</div>';
   container.appendChild(div);
+  // Attach input listener for colored hand preview
+  const handInput = document.getElementById('hand-' + n);
+  if (handInput) {
+    handInput.addEventListener('input', function() {
+      updateHandPreview(n);
+    });
+  }
 }
 function toggleHandMode(n) {
   const btn = document.getElementById('mode-' + n);
@@ -511,14 +536,16 @@ function updateDualRange(n) {
   if (lo > hi) { if (this === loEl) hiEl.value = lo; else loEl.value = hi; lo = parseInt(loEl.value); hi = parseInt(hiEl.value); }
   // Update fill bar position
   if (fill) { fill.style.left = lo + '%'; fill.style.width = (hi - lo) + '%'; }
-  // Generate label
+  // Generate label — reversed: right side = top (best), left side = bottom (worst)
+  // hi=100 means "Top X%" where X = 100-lo
+  // lo=0 means "Bottom X%" where X = hi
   if (label) {
-    if (lo === 0 && hi <= 100) {
-      label.textContent = 'Top ' + hi + '%';
-    } else if (hi === 100 && lo >= 0) {
-      label.textContent = 'Bottom ' + (100 - lo) + '%';
+    if (hi === 100 && lo >= 0) {
+      label.textContent = 'Top ' + (100 - lo) + '%';
+    } else if (lo === 0 && hi <= 100) {
+      label.textContent = 'Bottom ' + hi + '%';
     } else {
-      label.textContent = lo + '%-' + hi + '%';
+      label.textContent = (100 - hi) + '%-' + (100 - lo) + '%';
     }
   }
 }
@@ -526,14 +553,14 @@ function getHandMode(n) {
   const inp = document.getElementById('hand-' + n);
   if (!inp) return null;
   if (inp.dataset.rangeMode === 'true') {
-    const lo = parseInt(document.getElementById('range-lo-' + n)?.value || '0');
-    const hi = parseInt(document.getElementById('range-hi-' + n)?.value || '20');
-    // Translate to direction + pct for the generator
-    // lo=0 → "top hi%", hi=100 → "bottom (100-lo)%", else middle range
+    const lo = parseInt(document.getElementById('range-lo-' + n)?.value || '80');
+    const hi = parseInt(document.getElementById('range-hi-' + n)?.value || '100');
+    // Reversed slider: right = top (best), left = bottom (worst)
+    // hi=100 → "top (100-lo)%", lo=0 → "bottom hi%"
     let direction, pct;
-    if (lo === 0) { direction = 'top'; pct = hi; }
-    else if (hi === 100) { direction = 'bottom'; pct = 100 - lo; }
-    else { direction = 'top'; pct = hi; } // use hi as cutoff, lo as floor
+    if (hi === 100) { direction = 'top'; pct = 100 - lo; }
+    else if (lo === 0) { direction = 'bottom'; pct = hi; }
+    else { direction = 'top'; pct = 100 - lo; } // use right edge as cutoff
     return { mode: 'range', direction, pct, lo, hi };
   }
   return { mode: 'specific', value: inp.value };
@@ -709,13 +736,13 @@ function buildFilterMenuHTML(n) {
     html += '<div class="filter-item has-sub">Top % of Hands' +
       '<div class="filter-sub">' +
         ['5','10','15','20','25','30','40','50'].map(p =>
-          '<div class="filter-item" onclick="applyRangeFilter('+n+',0,'+p+')">Top ' + p + '%</div>'
+          '<div class="filter-item" onclick="applyRangeFilter('+n+','+(100-parseInt(p))+',100)">Top ' + p + '%</div>'
         ).join('') +
       '</div></div>';
     html += '<div class="filter-item has-sub">Bottom % of Hands' +
       '<div class="filter-sub">' +
         ['5','10','15','20','25','30','40','50'].map(p =>
-          '<div class="filter-item" onclick="applyRangeFilter('+n+','+(100-parseInt(p))+',100)">Bottom ' + p + '%</div>'
+          '<div class="filter-item" onclick="applyRangeFilter('+n+',0,'+p+')">Bottom ' + p + '%</div>'
         ).join('') +
       '</div></div>';
     html += '<div class="filter-sep"></div>';
@@ -744,7 +771,7 @@ function buildFilterMenuHTML(n) {
     html += '<div class="filter-item has-sub">Top % of Hands' +
       '<div class="filter-sub">' +
         ['5','10','15','20','25','30','40','50'].map(p =>
-          '<div class="filter-item" onclick="applyRangeFilter('+n+',0,'+p+')">Top ' + p + '%</div>'
+          '<div class="filter-item" onclick="applyRangeFilter('+n+','+(100-parseInt(p))+',100)">Top ' + p + '%</div>'
         ).join('') +
       '</div></div>';
     html += '<div class="filter-sep"></div>';
@@ -761,18 +788,19 @@ function toggleFilterMenu(n) {
   if (menu && !wasOpen) {
     menu.innerHTML = buildFilterMenuHTML(n);
     menu.classList.add('open');
-    // Attach click handlers to submenu parents
-    menu.querySelectorAll('.filter-item.has-sub').forEach(item => {
-      item.addEventListener('click', function(e) {
+    // Use event delegation for submenu toggle — handles rebuilt HTML reliably
+    menu.addEventListener('click', function(e) {
+      const hasSub = e.target.closest('.has-sub');
+      if (hasSub && menu.contains(hasSub)) {
         e.stopPropagation();
-        const sub = this.querySelector('.filter-sub');
+        const sub = hasSub.querySelector('.filter-sub');
         if (sub) {
           const isOpen = sub.classList.contains('open');
           // Close all other open subs in this menu
           menu.querySelectorAll('.filter-sub.open').forEach(s => s.classList.remove('open'));
           if (!isOpen) sub.classList.add('open');
         }
-      });
+      }
     });
   }
 }
@@ -816,7 +844,17 @@ function applyGenFilter(n, type, param) {
 
   if (hand) {
     const inp = document.getElementById('hand-' + n);
-    if (inp) inp.value = cardsToStr(hand);
+    if (inp) {
+      inp.value = cardsToStr(hand);
+      updateHandPreview(n);
+    }
+    // Set filter tag with description and tooltip
+    const desc = getFilterDescription(type, param);
+    const tag = document.getElementById('filter-tag-' + n);
+    if (tag) {
+      tag.textContent = desc.label;
+      tag.title = desc.title;
+    }
   }
   document.querySelectorAll('.filter-sub.open').forEach(s => s.classList.remove('open'));
   document.querySelectorAll('.filter-menu.open').forEach(m => m.classList.remove('open'));
@@ -839,6 +877,16 @@ function applyRangeFilter(n, lo, hi) {
   if (loEl) loEl.value = lo;
   if (hiEl) hiEl.value = hi;
   updateDualRange(n);
+  // Set filter tag
+  const tag = document.getElementById('filter-tag-' + n);
+  if (tag) {
+    let tagLabel;
+    if (hi === 100) { tagLabel = 'Top ' + (100 - lo) + '%'; }
+    else if (lo === 0) { tagLabel = 'Bottom ' + hi + '%'; }
+    else { tagLabel = (100 - hi) + '%-' + (100 - lo) + '%'; }
+    tag.textContent = tagLabel;
+    tag.title = tagLabel + ' of starting hands based on ProPokerTools rankings';
+  }
   document.querySelectorAll('.filter-sub.open').forEach(s => s.classList.remove('open'));
   document.querySelectorAll('.filter-menu.open').forEach(m => m.classList.remove('open'));
 }
@@ -1236,12 +1284,12 @@ function runSimulation() {
 
       const heroHand = hands[0];
       const slot = sliderRangeSlots[0];
-      const lo = slot.lo || 0;
-      const hi = slot.hi || 20;
+      const lo = slot.lo || 80;
+      const hi = slot.hi || 100;
       let rangeDesc;
-      if (lo === 0) rangeDesc = 'Top ' + hi + '%';
-      else if (hi === 100) rangeDesc = 'Bottom ' + (100 - lo) + '%';
-      else rangeDesc = lo + '-' + hi + '%';
+      if (hi === 100) rangeDesc = 'Top ' + (100 - lo) + '%';
+      else if (lo === 0) rangeDesc = 'Bottom ' + hi + '%';
+      else rangeDesc = (100 - hi) + '-' + (100 - lo) + '%';
 
       // Get all hand types in the range
       const total = HOLDEM_RANKINGS.length;
@@ -1333,9 +1381,9 @@ function runSimulation() {
       hands.push(hand);
       let rangeDesc;
       if (slot.lo !== undefined && slot.hi !== undefined) {
-        if (slot.lo === 0) rangeDesc = 'Top ' + slot.hi + '%';
-        else if (slot.hi === 100) rangeDesc = 'Btm ' + (100 - slot.lo) + '%';
-        else rangeDesc = slot.lo + '-' + slot.hi + '%';
+        if (slot.hi === 100) rangeDesc = 'Top ' + (100 - slot.lo) + '%';
+        else if (slot.lo === 0) rangeDesc = 'Btm ' + slot.hi + '%';
+        else rangeDesc = (100 - slot.hi) + '-' + (100 - slot.lo) + '%';
       } else {
         rangeDesc = (slot.direction === 'top' ? 'Top ' : 'Btm ') + slot.pct + '%';
       }
@@ -3562,7 +3610,8 @@ function openCardPicker(inputId) {
         btn.classList.add('cp-selected');
       }
 
-      btn.onclick = function() {
+      btn.addEventListener('pointerdown', function(e) {
+        e.preventDefault();
         if (btn.classList.contains('cp-disabled')) return;
         const ci = parseInt(btn.dataset.cardIdx);
         if (cardPickerSelected.has(ci)) {
@@ -3573,15 +3622,29 @@ function openCardPicker(inputId) {
           cardPickerSelected.add(ci);
           btn.classList.add('cp-selected');
         }
-      };
+        // Immediately update the target input
+        cpUpdateTargetInput();
+      });
       grid.appendChild(btn);
     }
+  }
+}
+
+function cpUpdateTargetInput() {
+  const inp = document.getElementById(cardPickerTargetInput);
+  if (inp) {
+    const arr = Array.from(cardPickerSelected);
+    inp.value = arr.map(i => { const c = cardFromIndex(i); return c.rank + c.suit; }).join(' ');
+    // Update hand preview if this is a hand input
+    const handMatch = cardPickerTargetInput.match(/^hand-(\d+)$/);
+    if (handMatch) updateHandPreview(parseInt(handMatch[1]));
   }
 }
 
 function cpClearAll() {
   cardPickerSelected.clear();
   document.querySelectorAll('.card-picker-cell.cp-selected').forEach(el => el.classList.remove('cp-selected'));
+  cpUpdateTargetInput();
 }
 
 function cpDone() {
@@ -3598,6 +3661,102 @@ function closeCardPicker() {
   if (overlay) overlay.remove();
   cardPickerTargetInput = null;
   cardPickerSelected = new Set();
+}
+
+// ============================================================
+// Hand Preview (4-color deck below input)
+// ============================================================
+function updateHandPreview(n) {
+  const inp = document.getElementById('hand-' + n);
+  const preview = document.getElementById('preview-' + n);
+  if (!inp || !preview) return;
+  try {
+    const cards = parseCards(inp.value);
+    if (cards.length > 0) {
+      preview.innerHTML = cardsToHTML(cards);
+    } else {
+      preview.innerHTML = '';
+    }
+  } catch(e) {
+    preview.innerHTML = '';
+  }
+}
+
+// ============================================================
+// Syntax Help Modal
+// ============================================================
+function showSyntaxHelp() {
+  const gt = document.getElementById('game-type').value;
+  const isHE = gt === 'holdem';
+  let html = '';
+
+  if (isHE) {
+    html += '<h4 style="color:#4a7c59;margin-bottom:6px;">Hold\'em Syntax</h4>';
+    html += '<table style="width:100%;font-size:12px;border-collapse:collapse;">';
+    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">AA</td><td style="padding:3px 8px;">Pair of aces (all 6 combos)</td></tr>';
+    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">AKs</td><td style="padding:3px 8px;">Ace-king suited (4 combos)</td></tr>';
+    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">AKo</td><td style="padding:3px 8px;">Ace-king offsuit (12 combos)</td></tr>';
+    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">TT+</td><td style="padding:3px 8px;">TT, JJ, QQ, KK, AA</td></tr>';
+    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">TT-77</td><td style="padding:3px 8px;">TT, 99, 88, 77</td></tr>';
+    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">ATs+</td><td style="padding:3px 8px;">ATs, AJs, AQs, AKs</td></tr>';
+    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">15%</td><td style="padding:3px 8px;">Top 15% of starting hands</td></tr>';
+    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">5%-10%</td><td style="padding:3px 8px;">Between top 5% and 10%</td></tr>';
+    html += '</table>';
+  } else {
+    html += '<h4 style="color:#4a7c59;margin-bottom:6px;">Omaha (PLO) Syntax</h4>';
+    html += '<table style="width:100%;font-size:12px;border-collapse:collapse;">';
+    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">AA</td><td style="padding:3px 8px;">At least two aces + 2 random cards</td></tr>';
+    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">AAKK</td><td style="padding:3px 8px;">Two aces and two kings</td></tr>';
+    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">AA$ds</td><td style="padding:3px 8px;">Double-suited aces</td></tr>';
+    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">AA$ss</td><td style="padding:3px 8px;">Single-suited aces</td></tr>';
+    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">RROO</td><td style="padding:3px 8px;">Two-pair hand (any ranks)</td></tr>';
+    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">9876-</td><td style="padding:3px 8px;">Medium rundown</td></tr>';
+    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">*$np</td><td style="padding:3px 8px;">Any hand, no pairs</td></tr>';
+    html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">20%</td><td style="padding:3px 8px;">Top 20% of PLO starting hands</td></tr>';
+    html += '</table>';
+  }
+
+  html += '<h4 style="color:#4a7c59;margin:10px 0 6px;">Operators</h4>';
+  html += '<table style="width:100%;font-size:12px;border-collapse:collapse;">';
+  html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">,</td><td style="padding:3px 8px;">OR (union) &mdash; AA,KK = aces or kings</td></tr>';
+  html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">:</td><td style="padding:3px 8px;">AND (intersection) &mdash; AK:$s = AK and suited</td></tr>';
+  html += '<tr><td style="padding:3px 8px;font-family:monospace;font-weight:bold;">!</td><td style="padding:3px 8px;">NOT (difference) &mdash; 20%!AA = top 20% minus aces</td></tr>';
+  html += '</table>';
+
+  html += '<h4 style="color:#4a7c59;margin:10px 0 6px;">Macros</h4>';
+  html += '<div style="font-size:11px;line-height:1.5;color:#555;">';
+  html += '<b>$ds</b> double-suited &middot; <b>$ss</b> single-suited &middot; <b>$np</b> no pairs &middot; <b>$nt</b> no trips<br>';
+  html += '<b>$0g</b> 0-gap rundown &middot; <b>$1g</b> 1-gap &middot; <b>$2g</b> 2-gap<br>';
+  html += '<b>$B</b> big [A-J] &middot; <b>$M</b> mid [T-7] &middot; <b>$Z</b> small [6-2]<br>';
+  html += '<b>$W</b> wheel [A2345] &middot; <b>$R</b> broadway [A-T] &middot; <b>$F</b> face [K-J]';
+  html += '</div>';
+
+  document.getElementById('syntax-modal-body').innerHTML = html;
+  document.getElementById('syntax-modal').classList.add('active');
+}
+
+function closeSyntaxModal() {
+  document.getElementById('syntax-modal').classList.remove('active');
+}
+
+// ============================================================
+// Filter tag + tooltip helpers
+// ============================================================
+function getFilterDescription(type, param) {
+  const gt = document.getElementById('game-type')?.value || 'omaha';
+  const isHE = gt === 'holdem';
+  const descriptions = {
+    'pair': { label: param + param, title: 'A hand containing at least two ' + (param === 'A' ? 'aces' : param === 'K' ? 'kings' : param === 'Q' ? 'queens' : param === 'J' ? 'jacks' : param + 's') + ' \u2014 generates one random example' },
+    'twopair': { label: 'RROO', title: 'Two pair hand \u2014 generates random two-pair example' },
+    'ds': { label: '$ds', title: 'Double-suited \u2014 two cards of one suit, two of another' },
+    'ss': { label: '$ss', title: 'Single-suited \u2014 exactly one pair of suited cards' },
+    'rainbow': { label: 'Rainbow', title: 'Rainbow/Badugi \u2014 all four suits represented' },
+    'rundown': { label: 'Rundown (' + (param === 'high' ? 'High' : param === 'mid' ? 'Mid' : 'Low') + ')', title: 'Connected cards \u2014 ' + (param === 'high' ? 'AKQJ-TJQK range' : param === 'mid' ? 'T987-6789 range' : '6543-2345 range') },
+    'suited': { label: param + 's', title: param + ' suited \u2014 generates one random suited example' },
+    'offsuit': { label: param + 'o', title: param + ' offsuit \u2014 generates one random offsuit example' },
+    'random': { label: 'Random', title: 'Completely random hand from the remaining deck' },
+  };
+  return descriptions[type] || { label: type, title: '' };
 }
 
 // Auto-resize textarea
