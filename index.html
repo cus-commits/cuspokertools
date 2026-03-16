@@ -1370,7 +1370,69 @@ function runSimulation() {
         return; // Early return — PPT range mode handled
       }
 
-      // Multiple ranges or multiple heroes: not fully supported yet, pick one random combo from each range
+      // Multiple ranges or complex scenario: merge all range combos and run vs hero
+      // Take the first range and run hero vs all its combos
+      if (hands.length >= 1 && rangeInfos.length >= 1) {
+        const heroHand = hands[0];
+        const rangeInfo = rangeInfos[0];
+        const allOppHands2 = rangeInfo.combos;
+        const rangeDesc2 = rangeInfo.label;
+        let combosToRun2 = allOppHands2;
+        if (allOppHands2.length > 80) { shuffleArray(allOppHands2); combosToRun2 = allOppHands2.slice(0, 80); }
+        const isDB2 = gameType === 'doubleboard';
+        let idx3 = 0, totalHeroEq3 = 0, totalTrials3 = 0;
+        let heroOv3=0,oppOv3=0,hB13=0,oB13=0,hB23=0,oB23=0,hSc3=0,oSc3=0;
+        resultsArea.innerHTML = '<p class="loading">Running vs ' + rangeDesc2 + '...</p>';
+        function procChunk3() {
+          const end3 = Math.min(idx3+1, combosToRun2.length);
+          for(;idx3<end3;idx3++){
+            const opp=combosToRun2[idx3], mh=[heroHand,opp];
+            if(isDB2){
+              const au=new Set([...heroHand,...opp,...board1Cards,...board2Cards,...deadCards]);
+              const rem=[];for(let i=0;i<52;i++){if(!au.has(i))rem.push(i);}
+              const r=simulateDoubleBoard(mh,board1Cards,board2Cards,rem,10000);
+              heroOv3+=r.overallEquity[0];oppOv3+=r.overallEquity[1];
+              hB13+=r.board1Equity[0];oB13+=r.board1Equity[1];
+              hB23+=r.board2Equity[0];oB23+=r.board2Equity[1];
+              hSc3+=r.scoopPct[0];oSc3+=r.scoopPct[1];totalTrials3+=r.trials;
+            } else {
+              const bc=boardCards,au=new Set([...heroHand,...opp,...bc,...deadCards]);
+              const rem=[];for(let i=0;i<52;i++){if(!au.has(i))rem.push(i);}
+              const r=(gameType==='omaha'?simulateOmaha:simulateHoldem)(mh,bc,rem,10000);
+              const eq=r.equities||r.equity||[];
+              totalHeroEq3+=(eq[0]||0)*r.trials;totalTrials3+=r.trials;
+            }
+          }
+          const pct=Math.round(idx3/combosToRun2.length*100);
+          const bar='█'.repeat(Math.round(pct/5))+'░'.repeat(20-Math.round(pct/5));
+          const runEq=isDB2?(idx3>0?(heroOv3/idx3*100).toFixed(1):'...'):(totalTrials3>0?(totalHeroEq3/totalTrials3*100).toFixed(1):'...');
+          resultsArea.innerHTML='<p class="loading">⏳ '+idx3+'/'+combosToRun2.length+' ['+bar+'] '+pct+'%<br>📊 Equity: '+runEq+'%</p>';
+          if(idx3<combosToRun2.length){setTimeout(procChunk3,0);}else{
+            const n=combosToRun2.length;
+            const gn={holdem:"Hold'em",omaha:'Omaha (PLO4)',doubleboard:'Double Board PLO'};
+            let html='<h3>'+gn[gameType]+' vs Range</h3><p>vs '+rangeDesc2+' ('+allOppHands2.length+' combos after card removal)</p>';
+            if(isDB2){
+              if(board1Cards.length>0)html+='<p><strong>Board 1:</strong> '+cardsToHTML(board1Cards)+'</p>';
+              if(board2Cards.length>0)html+='<p><strong>Board 2:</strong> '+cardsToHTML(board2Cards)+'</p>';
+              html+='<table class="results-table"><thead><tr><th>Hand</th><th>Overall</th><th>Board 1</th><th>Board 2</th><th>Scoop%</th></tr></thead><tbody>';
+              html+='<tr><td>Hero '+cardsToHTML(heroHand)+'</td><td><strong>'+(heroOv3/n*100).toFixed(2)+'%</strong></td><td>'+(hB13/n*100).toFixed(2)+'%</td><td>'+(hB23/n*100).toFixed(2)+'%</td><td>'+(hSc3/n*100).toFixed(2)+'%</td></tr>';
+              html+='<tr><td>'+rangeDesc2+'</td><td><strong>'+(oppOv3/n*100).toFixed(2)+'%</strong></td><td>'+(oB13/n*100).toFixed(2)+'%</td><td>'+(oB23/n*100).toFixed(2)+'%</td><td>'+(oSc3/n*100).toFixed(2)+'%</td></tr>';
+              html+='</tbody></table>';
+            }else{
+              const heroEq3=(totalHeroEq3/totalTrials3*100).toFixed(2);
+              if(boardCards.length>0)html+='<p><strong>Board:</strong> '+cardsToHTML(boardCards)+'</p>';
+              html+='<table class="results-table"><thead><tr><th>Hand</th><th>Equity</th></tr></thead><tbody>';
+              html+='<tr><td>Hero '+cardsToHTML(heroHand)+'</td><td><strong>'+heroEq3+'%</strong></td></tr>';
+              html+='<tr><td>'+rangeDesc2+'</td><td><strong>'+(100-parseFloat(heroEq3)).toFixed(2)+'%</strong></td></tr>';
+              html+='</tbody></table>';
+            }
+            resultsArea.innerHTML=html;
+          }
+        }
+        procChunk3();
+        return;
+      }
+      // Absolute fallback: pick one random combo
       for (const ri of rangeInfos) {
         const randomCombo = ri.combos[Math.floor(Math.random() * ri.combos.length)];
         hands.push(randomCombo);
