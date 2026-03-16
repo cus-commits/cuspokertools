@@ -35,12 +35,22 @@ select, input[type="text"] {
   font-family: 'Courier New', monospace; background: white;
 }
 select { font-family: Arial, sans-serif; cursor: pointer; }
-.hand-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-.hand-row input { flex: 1; }
+.hand-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.hand-row input[type="text"] { flex: 1; min-width: 120px; }
 .hand-row .hand-label { font-size: 12px; color: #555; min-width: 60px; font-weight: bold; }
 .hand-row .remove-btn {
   background: none; border: none; color: #c00; cursor: pointer; font-size: 16px; padding: 0 4px;
 }
+.hand-row .mode-toggle {
+  font-size: 11px; padding: 3px 8px; border: 1px solid #999; border-radius: 3px;
+  background: #f0f0f0; cursor: pointer; color: #555; white-space: nowrap;
+}
+.hand-row .mode-toggle:hover { background: #e0e0e0; }
+.hand-row .mode-toggle.range-active { background: #4a7c59; color: white; border-color: #4a7c59; }
+.range-controls { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 200px; }
+.range-controls select { width: auto; min-width: 70px; font-size: 12px; padding: 4px; }
+.range-controls input[type="range"] { flex: 1; accent-color: #4a7c59; cursor: pointer; }
+.range-controls .range-label { font-size: 12px; font-weight: bold; color: #4a7c59; min-width: 55px; text-align: center; }
 .more-hands { color: #2a6e3f; cursor: pointer; font-size: 12px; text-decoration: underline; margin: 6px 0; display: inline-block; }
 .more-hands:hover { color: #1a5e2f; }
 
@@ -373,16 +383,61 @@ function showPage(page) {
 let handCount = 0;
 function addHandSlot() {
   handCount++;
+  const n = handCount;
   const container = document.getElementById('hands-container');
   const div = document.createElement('div');
   div.className = 'hand-row';
-  div.id = 'hand-row-' + handCount;
+  div.id = 'hand-row-' + n;
   const gt = document.getElementById('game-type').value;
   const ph = gt === 'holdem' ? 'e.g. AhKs' : 'e.g. AhKsQdJc';
-  div.innerHTML = '<span class="hand-label">Hand ' + handCount + ':</span>' +
-    '<input type="text" id="hand-' + handCount + '" placeholder="' + ph + '">' +
-    '<button class="remove-btn" onclick="removeHand(' + handCount + ')" title="Remove">&times;</button>';
+  div.innerHTML =
+    '<span class="hand-label">Hand ' + n + ':</span>' +
+    '<input type="text" id="hand-' + n + '" placeholder="' + ph + '">' +
+    '<button class="mode-toggle" id="mode-' + n + '" onclick="toggleHandMode(' + n + ')" title="Switch to Range mode">Range</button>' +
+    '<button class="remove-btn" onclick="removeHand(' + n + ')" title="Remove">&times;</button>' +
+    '<div class="range-controls" id="range-' + n + '" style="display:none;">' +
+      '<select id="range-dir-' + n + '" onchange="updateRangeLabel(' + n + ')">' +
+        '<option value="top">Top</option><option value="bottom">Bottom</option>' +
+      '</select>' +
+      '<input type="range" id="range-slider-' + n + '" min="1" max="100" value="20" oninput="updateRangeLabel(' + n + ')">' +
+      '<span class="range-label" id="range-val-' + n + '">Top 20%</span>' +
+    '</div>';
   container.appendChild(div);
+}
+function toggleHandMode(n) {
+  const btn = document.getElementById('mode-' + n);
+  const inp = document.getElementById('hand-' + n);
+  const range = document.getElementById('range-' + n);
+  if (!btn || !inp || !range) return;
+  const isRange = btn.classList.toggle('range-active');
+  if (isRange) {
+    btn.textContent = 'Cards';
+    inp.style.display = 'none';
+    range.style.display = 'flex';
+    inp.dataset.rangeMode = 'true';
+    updateRangeLabel(n);
+  } else {
+    btn.textContent = 'Range';
+    inp.style.display = '';
+    range.style.display = 'none';
+    inp.dataset.rangeMode = '';
+  }
+}
+function updateRangeLabel(n) {
+  const dir = document.getElementById('range-dir-' + n)?.value || 'top';
+  const val = document.getElementById('range-slider-' + n)?.value || 20;
+  const label = document.getElementById('range-val-' + n);
+  if (label) label.textContent = (dir === 'top' ? 'Top ' : 'Bottom ') + val + '%';
+}
+function getHandMode(n) {
+  const inp = document.getElementById('hand-' + n);
+  if (!inp) return null;
+  if (inp.dataset.rangeMode === 'true') {
+    const dir = document.getElementById('range-dir-' + n)?.value || 'top';
+    const val = parseInt(document.getElementById('range-slider-' + n)?.value || '20');
+    return { mode: 'range', direction: dir, pct: val };
+  }
+  return { mode: 'specific', value: inp.value };
 }
 function removeHand(n) {
   const el = document.getElementById('hand-row-' + n);
@@ -604,18 +659,52 @@ function runSimulation() {
 
     const hands = [];
     const handLabels = [];
-    const inputs = document.querySelectorAll('#hands-container input');
-    inputs.forEach((inp, i) => {
-      const cards = parseCards(inp.value);
-      if (cards.length > 0) {
-        const expectedLen = gameType === 'holdem' ? 2 : 4;
-        if (cards.length !== expectedLen) {
-          throw new Error('Hand ' + (i+1) + ': expected ' + expectedLen + ' cards, got ' + cards.length);
-        }
-        hands.push(cards);
-        handLabels.push(cardsToStr(cards));
-      }
+    const usedForRange = new Set();
+    boardCards.forEach(c => usedForRange.add(c));
+    board1Cards.forEach(c => usedForRange.add(c));
+    board2Cards.forEach(c => usedForRange.add(c));
+
+    // First pass: collect all specific hands
+    const handSlots = [];
+    const rows = document.querySelectorAll('#hands-container .hand-row');
+    rows.forEach((row) => {
+      const id = row.id.replace('hand-row-', '');
+      const mode = getHandMode(parseInt(id));
+      if (!mode) return;
+      handSlots.push({ id: parseInt(id), ...mode });
     });
+
+    // Process specific hands first (so ranges know what's taken)
+    for (const slot of handSlots) {
+      if (slot.mode === 'specific') {
+        const cards = parseCards(slot.value);
+        if (cards.length > 0) {
+          const expectedLen = gameType === 'holdem' ? 2 : 4;
+          if (cards.length !== expectedLen) {
+            throw new Error('Hand ' + slot.id + ': expected ' + expectedLen + ' cards, got ' + cards.length);
+          }
+          hands.push(cards);
+          handLabels.push(cardsToStr(cards));
+          cards.forEach(c => usedForRange.add(c));
+        }
+      }
+    }
+
+    // Then generate range hands
+    for (const slot of handSlots) {
+      if (slot.mode === 'range') {
+        let hand;
+        if (gameType === 'holdem') {
+          hand = generateRangedHoldemHand(usedForRange, slot.pct, slot.direction);
+        } else {
+          hand = generateRangedPLOHand(usedForRange, slot.pct, slot.direction);
+        }
+        hand.forEach(c => usedForRange.add(c));
+        hands.push(hand);
+        const dirLabel = slot.direction === 'top' ? 'Top' : 'Btm';
+        handLabels.push(cardsToStr(hand) + ' (' + dirLabel + ' ' + slot.pct + '%)');
+      }
+    }
 
     if (hands.length < 2) throw new Error('Need at least 2 hands to simulate');
 
@@ -1265,6 +1354,112 @@ function generateRandomHoldemHand(usedCards) {
   }
   shuffleArray(available);
   return available.slice(0, 2);
+}
+
+// Hold'em hand rankings (169 distinct hands ranked best to worst)
+// Each entry: [rank1, rank2, suited] where ranks are 2-14 (A=14)
+const HOLDEM_RANKINGS = (function() {
+  // Ranked from best to worst (simplified Sklansky-style + equity-based)
+  const ranked = [];
+  // Pairs (high to low)
+  for (let r = 14; r >= 2; r--) ranked.push([r, r, false]);
+  // Suited aces
+  for (let r = 13; r >= 2; r--) ranked.push([14, r, true]);
+  // Suited kings
+  for (let r = 12; r >= 2; r--) ranked.push([13, r, true]);
+  // Offsuit aces
+  for (let r = 13; r >= 2; r--) ranked.push([14, r, false]);
+  // Suited queens
+  for (let r = 11; r >= 2; r--) ranked.push([12, r, true]);
+  // Offsuit kings
+  for (let r = 12; r >= 2; r--) ranked.push([13, r, false]);
+  // Suited connectors/gappers
+  for (let r = 11; r >= 2; r--) ranked.push([r+1, r, true]);
+  // Offsuit queens
+  for (let r = 11; r >= 2; r--) ranked.push([12, r, false]);
+  // Remaining suited
+  for (let hi = 11; hi >= 3; hi--)
+    for (let lo = hi-2; lo >= 2; lo--)
+      ranked.push([hi, lo, true]);
+  // Remaining offsuit
+  for (let hi = 11; hi >= 3; hi--)
+    for (let lo = hi-1; lo >= 2; lo--)
+      ranked.push([hi, lo, false]);
+  // Deduplicate
+  const seen = new Set();
+  const unique = [];
+  for (const [a, b, s] of ranked) {
+    const key = Math.max(a,b) + '-' + Math.min(a,b) + '-' + (s?'s':'o');
+    if (!seen.has(key)) { seen.add(key); unique.push([a, b, s]); }
+  }
+  return unique;
+})();
+
+function generateRangedHoldemHand(usedCards, pct, direction) {
+  // pct = 1-100, direction = 'top' or 'bottom'
+  const total = HOLDEM_RANKINGS.length; // 169
+  let cutoff = Math.max(1, Math.round(total * pct / 100));
+  let pool;
+  if (direction === 'top') {
+    pool = HOLDEM_RANKINGS.slice(0, cutoff);
+  } else {
+    pool = HOLDEM_RANKINGS.slice(total - cutoff);
+  }
+  // Try to generate a hand from the pool
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const template = pool[Math.floor(Math.random() * pool.length)];
+    const [r1, r2, suited] = template;
+    const ri1 = r1 - 2; // index into RANKS (0-12)
+    const ri2 = r2 - 2;
+    if (r1 === r2) {
+      // Pair: pick 2 random suits
+      const suits = shuffleArray([0,1,2,3]);
+      const c1 = ri1 * 4 + suits[0];
+      const c2 = ri2 * 4 + suits[1];
+      if (!usedCards.has(c1) && !usedCards.has(c2)) return [c1, c2];
+    } else if (suited) {
+      const s = Math.floor(Math.random() * 4);
+      const c1 = ri1 * 4 + s;
+      const c2 = ri2 * 4 + s;
+      if (!usedCards.has(c1) && !usedCards.has(c2)) return [c1, c2];
+    } else {
+      const s1 = Math.floor(Math.random() * 4);
+      let s2 = Math.floor(Math.random() * 4);
+      while (s2 === s1) s2 = Math.floor(Math.random() * 4);
+      const c1 = ri1 * 4 + s1;
+      const c2 = ri2 * 4 + s2;
+      if (!usedCards.has(c1) && !usedCards.has(c2)) return [c1, c2];
+    }
+  }
+  // Fallback: random
+  return generateRandomHoldemHand(usedCards);
+}
+
+function generateRangedPLOHand(usedCards, pct, direction) {
+  // For PLO, top/bottom is based on our tier system
+  // Top: use the closest tier. Bottom: use random (weak hands)
+  if (direction === 'bottom') {
+    // Bottom X% = weakest hands = just random cards (no premium structure)
+    const available = [];
+    for (let i = 0; i < 52; i++) {
+      if (!usedCards.has(i)) available.push(i);
+    }
+    shuffleArray(available);
+    return available.slice(0, 4);
+  }
+  // Top X%
+  if (pct <= 5) return generateRandomPLOHand(usedCards, 5);
+  if (pct <= 10) return generateRandomPLOHand(usedCards, 10);
+  if (pct <= 20) return generateRandomPLOHand(usedCards, 20);
+  if (pct <= 30) return generateRandomPLOHand(usedCards, 30);
+  // >30%: mix of tiered hands and random
+  if (Math.random() < 0.5) return generateRandomPLOHand(usedCards, 30);
+  const available = [];
+  for (let i = 0; i < 52; i++) {
+    if (!usedCards.has(i)) available.push(i);
+  }
+  shuffleArray(available);
+  return available.slice(0, 4);
 }
 
 // ============================================================
