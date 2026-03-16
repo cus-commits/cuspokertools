@@ -2701,7 +2701,7 @@ function detectInputType(input) {
 
   // Check if it matches range syntax patterns
   // Ranges contain rank letters but NOT suit letters adjacent to ranks in specific-card way
-  const rangePattern = /^[AKQJT2-9,\s%+\-$sod!:()@\[\]]+$/i;
+  const rangePattern = /^[AKQJT0-9RONronwxyz,\s%+\-$!:()@\[\]*{}]+$/i;
   if (rangePattern.test(input)) {
     return 'range';
   }
