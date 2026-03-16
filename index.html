@@ -1346,7 +1346,7 @@ function runSimulation() {
             const n = combosToRun.length;
             const gameNames = { holdem: "Hold'em", omaha: 'Omaha (PLO4)', doubleboard: 'Double Board PLO' };
             let html = '<h3>' + gameNames[gameType] + ' vs Range</h3>';
-            html += '<p>vs ' + rangeDesc + ' (' + allOppHands.length + ' combos after card removal)</p>';
+            html += '<p>vs ' + rangeDesc + ' (' + allOppHands.length + ' sampled combos)</p>';
             if (isDB) {
               if (board1Cards.length > 0) html += '<p><strong>Board 1:</strong> ' + cardsToHTML(board1Cards) + '</p>';
               if (board2Cards.length > 0) html += '<p><strong>Board 2:</strong> ' + cardsToHTML(board2Cards) + '</p>';
@@ -1418,7 +1418,7 @@ function runSimulation() {
           if(idx3<combosToRun2.length){setTimeout(procChunk3,0);}else{
             const n=combosToRun2.length;
             const gn={holdem:"Hold'em",omaha:'Omaha (PLO4)',doubleboard:'Double Board PLO'};
-            let html='<h3>'+gn[gameType]+' vs Range</h3><p>vs '+rangeDesc2+' ('+allOppHands2.length+' combos after card removal)</p>';
+            let html='<h3>'+gn[gameType]+' vs Range</h3><p>vs '+rangeDesc2+' ('+allOppHands2.length+' sampled combos)</p>';
             if(isDB2){
               if(board1Cards.length>0)html+='<p><strong>Board 1:</strong> '+cardsToHTML(board1Cards)+'</p>';
               if(board2Cards.length>0)html+='<p><strong>Board 2:</strong> '+cardsToHTML(board2Cards)+'</p>';
@@ -2869,7 +2869,7 @@ function enumerateHoldemCombos(handTypes, blockedCards) {
  * Returns array of [c1, c2, c3, c4] arrays.
  */
 function enumeratePLORange(pattern, blockedCards, numSamples) {
-  numSamples = numSamples || 75;
+  numSamples = numSamples || 500;
   const blocked = blockedCards || new Set();
   pattern = pattern.trim().toUpperCase().replace(/10/g, 'T');
   const results = [];
@@ -3049,7 +3049,7 @@ function enumerateRange(pattern, gameType, blockedCards) {
     return enumerateHoldemCombos(handTypes, blockedCards);
   } else {
     // PLO / Double Board: use Monte Carlo sampling
-    return enumeratePLORange(pattern, blockedCards, 75);
+    return enumeratePLORange(pattern, blockedCards, 500);
   }
 }
 
@@ -3735,7 +3735,7 @@ function formatCalcResultsForClaude(calc, results) {
   if (results.isRange) {
     // Range mode results
     if (results.board1.length > 0) msg += 'Board: ' + cardsToStr(results.board1) + '\n';
-    msg += 'Range: ' + results.rangeName + ' (' + results.rangeCombos + ' combos after card removal)\n\n';
+    msg += 'Range: ' + results.rangeName + ' (' + results.rangeCombos + ' sampled combos)\n\n';
     const eqRange = results.equities || results.equity || [];
     msg += 'Hero (' + cardsToStr(results.allHands[0]) + '): Equity = ' + ((eqRange[0] || 0) * 100).toFixed(2) + '%\n';
     msg += results.rangeName + ' range: Equity = ' + ((eqRange[1] || 0) * 100).toFixed(2) + '%\n';
@@ -3773,7 +3773,7 @@ function renderCalcResultsHTML(calc, results) {
   let html = '<strong>Calculation Results</strong><br>';
 
   if (results.isRange) {
-    html += '<span style="font-size:11px;color:#888;">vs ' + results.rangeName + ' range (' + results.rangeCombos + ' combos after card removal)</span><br><br>';
+    html += '<span style="font-size:11px;color:#888;">vs ' + results.rangeName + ' range (' + results.rangeCombos + ' sampled combos)</span><br><br>';
     if (results.board1.length > 0) html += 'Board: <strong>' + cardsToHTML(results.board1) + '</strong><br><br>';
     const eqRng = results.equities || results.equity || [];
     html += '<table><tr><th>Hand</th><th>Equity</th></tr>';
