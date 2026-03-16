@@ -1287,12 +1287,14 @@ IMPORTANT RULES:
   |||CALC|||{"gameType":"doubleBoard","hands":["AhAdKsKc"],"board1":"Kd7s5h","board2":"As2c3c","numOpponents":7,"oppRange":"top10"}|||END|||
 
 - gameType can be: "holdem", "omaha", or "doubleBoard"
-- hands: array of specific hand strings (e.g. "AhKs" for holdem, "AhAdKsKc" for PLO)
+- hands: array of ALL specific hand strings the user mentioned. Put the hero's hand FIRST. If the user specifies their opponent's exact hand, include it in this array too (e.g. "hands":["AhKs","JsQs"] for a heads-up matchup).
 - board1: board cards as string (for single board games, use "board1" only)
 - board2: second board (only for doubleBoard)
-- numOpponents: number of random opponent hands to generate
-- oppRange: "top5", "top10", "top20", "top30", or "random" (for opponent hand generation)
+- numOpponents: number of ADDITIONAL random opponent hands to generate BEYOND what's already in the hands array. If the user specified all hands (e.g. "my AK vs his QJs"), set numOpponents to 0 because both hands are already in the hands array. Only use numOpponents > 0 when the user wants random/unknown opponents (e.g. "against 7 opponents" or "against top 10% of hands").
+- oppRange: "top5", "top10", "top20", "top30", or "random" (for opponent hand generation). Only relevant when numOpponents > 0.
 - If board1 or board2 is not provided, leave it as "" (empty string) for preflop analysis
+
+CRITICAL: The hands array contains ALL known hands. numOpponents is ONLY for generating additional random hands. For a simple "Hand A vs Hand B" scenario, hands=["HandA","HandB"] and numOpponents=0.
 
 - When suits are not specified by the user, offer to assign random ones. If they agree, pick reasonable ones (avoid giving the hero a monotone hand unless it makes sense; vary the suits).
 - For board texture: "rainbow" = all different suits, "two-tone" = exactly 2 cards of one suit, "monotone" = 3+ of one suit.
