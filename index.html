@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>cusPokerTools - Poker Equity Calculator</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #333; background: #f5f5f5; }
+
+/* Header */
+.header { background: #4a7c59; color: white; padding: 10px 20px; }
+.header h1 { font-size: 22px; font-weight: bold; letter-spacing: 1px; }
+.header .subtitle { font-size: 11px; opacity: 0.85; margin-top: 2px; }
+
+/* Navigation */
+.nav { background: #3d6b4a; display: flex; padding: 0 20px; }
+.nav a {
+  color: white; text-decoration: none; padding: 8px 18px; font-size: 13px;
+  cursor: pointer; border-bottom: 3px solid transparent;
+}
+.nav a:hover { background: rgba(255,255,255,0.1); }
+.nav a.active { background: rgba(255,255,255,0.15); border-bottom: 3px solid #a8d5ba; font-weight: bold; }
+
+/* Main layout */
+.main { display: flex; max-width: 1200px; margin: 0 auto; padding: 15px; gap: 15px; }
+.left-panel { flex: 0 0 420px; background: white; border: 1px solid #ccc; padding: 15px; }
+.right-panel { flex: 1; background: #e8f5e9; border: 1px solid #b8d4bc; padding: 15px; min-height: 400px; }
+
+/* Form controls */
+label { display: block; font-weight: bold; margin: 10px 0 4px; font-size: 12px; color: #555; }
+label:first-child { margin-top: 0; }
+select, input[type="text"] {
+  width: 100%; padding: 6px 8px; border: 1px solid #aaa; font-size: 13px;
+  font-family: 'Courier New', monospace; background: white;
+}
+select { font-family: Arial, sans-serif; cursor: pointer; }
+.hand-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.hand-row input { flex: 1; }
+.hand-row .hand-label { font-size: 12px; color: #555; min-width: 60px; font-weight: bold; }
+.hand-row .remove-btn {
+  background: none; border: none; color: #c00; cursor: pointer; font-size: 16px; padding: 0 4px;
+}
+.more-hands { color: #2a6e3f; cursor: pointer; font-size: 12px; text-decoration: underline; margin: 6px 0; display: inline-block; }
+.more-hands:hover { color: #1a5e2f; }
+
+/* Buttons */
+.btn-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.btn {
+  padding: 8px 20px; font-size: 13px; cursor: pointer; border: 1px solid #888;
+  background: #f0f0f0; color: #333; font-weight: bold;
+}
+.btn:hover { background: #e0e0e0; }
+.btn-primary { background: #4a7c59; color: white; border-color: #3d6b4a; }
+.btn-primary:hover { background: #3d6b4a; }
+.btn-secondary { background: #eee; }
+.btn-row-2 { margin-top: 8px; }
+
+/* Results */
+.results-title { font-size: 16px; font-weight: bold; color: #2a5e3a; margin-bottom: 10px; }
+.results-info { font-size: 12px; color: #555; margin-bottom: 8px; }
+.results-board { font-family: 'Courier New', monospace; font-size: 13px; margin-bottom: 10px; color: #333; }
+table.results-table {
+  width: 100%; border-collapse: collapse; font-size: 13px; background: white;
+}
+table.results-table th {
+  background: #5a8c69; color: white; padding: 8px 10px; text-align: left;
+  font-size: 12px; border: 1px solid #4a7c59;
+}
+table.results-table td {
+  padding: 6px 10px; border: 1px solid #ccc;
+}
+table.results-table tr:nth-child(even) { background: #f0f8f2; }
+table.results-table .equity-cell { font-weight: bold; }
+
+.error-msg { color: #c00; font-weight: bold; font-size: 13px; margin: 10px 0; }
+.loading { color: #2a6e3f; font-weight: bold; font-size: 14px; }
+.placeholder-text { color: #888; font-size: 13px; font-style: italic; margin-top: 30px; }
+
+/* Card suit colors in results */
+.suit-h, .suit-d { color: #cc0000; }
+.suit-c, .suit-s { color: #333; }
+
+/* Pages */
+.page { display: none; }
+.page.active { display: block; }
+.about-content, .home-content { max-width: 700px; margin: 20px auto; background: white; padding: 25px; border: 1px solid #ccc; }
+.about-content h2, .home-content h2 { color: #4a7c59; margin-bottom: 10px; }
+.about-content p, .home-content p { margin-bottom: 10px; line-height: 1.5; }
+.home-content ul { margin: 10px 0 10px 25px; }
+.home-content li { margin-bottom: 5px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>cusPokerTools</h1>
+  <div class="subtitle">Poker Equity Simulator</div>
+</div>
+<div class="nav">
+  <a id="nav-home" onclick="showPage('home')">Home</a>
+  <a id="nav-sim" class="active" onclick="showPage('sim')">Simulations</a>
+  <a id="nav-about" onclick="showPage('about')">About</a>
+</div>
+
+<!-- Home Page -->
+<div id="page-home" class="page">
+  <div class="home-content">
+    <h2>Welcome to cusPokerTools</h2>
+    <p>A client-side poker equity calculator supporting multiple game types.</p>
+    <p><strong>Supported Games:</strong></p>
+    <ul>
+      <li><strong>Hold'em</strong> &mdash; Texas Hold'em with 2 hole cards</li>
+      <li><strong>Omaha (PLO4)</strong> &mdash; Pot Limit Omaha with 4 hole cards (must use exactly 2)</li>
+      <li><strong>Double Board PLO Bomb Pot</strong> &mdash; PLO with two independent boards; pot split between board winners</li>
+    </ul>
+    <p>Click <strong>Simulations</strong> to get started.</p>
+  </div>
+</div>
+
+<!-- Simulation Page -->
+<div id="page-sim" class="page active">
+  <div class="main">
+    <div class="left-panel">
+      <label for="game-type">Game Type</label>
+      <select id="game-type" onchange="onGameTypeChange()">
+        <option value="holdem">Hold'em</option>
+        <option value="omaha">Omaha (PLO4)</option>
+        <option value="doubleboard">Double Board PLO Bomb Pot</option>
+      </select>
+
+      <div id="board-section-single">
+        <label for="board-input">Board</label>
+        <input type="text" id="board-input" placeholder="e.g. Kh 3c 4c">
+      </div>
+
+      <div id="board-section-double" style="display:none;">
+        <label for="board1-input">Board 1</label>
+        <input type="text" id="board1-input" placeholder="e.g. Kh 3c 4c">
+        <label for="board2-input">Board 2</label>
+        <input type="text" id="board2-input" placeholder="e.g. Ts 7d 2h">
+      </div>
+
+      <label for="dead-input">Dead Cards</label>
+      <input type="text" id="dead-input" placeholder="e.g. 9h 9d">
+
+      <label>Hands</label>
+      <div id="hands-container"></div>
+      <a class="more-hands" onclick="addHandSlot()">+ More hands</a>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="runSimulation()">Simulate</button>
+        <button class="btn btn-secondary" onclick="clearAll()">Clear All</button>
+      </div>
+      <div class="btn-row btn-row-2">
+        <button class="btn" onclick="countCombos()">Count</button>
+        <button class="btn" onclick="rankHand()">Rank</button>
+        <button class="btn" onclick="toEnglish()">To English</button>
+      </div>
+      <div id="left-info" style="margin-top:10px; font-size:12px; color:#555;"></div>
+    </div>
+    <div class="right-panel">
+      <div id="results-area">
+        <p class="placeholder-text">Enter hands and click Simulate to calculate equity.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- About Page -->
+<div id="page-about" class="page">
+  <div class="about-content">
+    <h2>About cusPokerTools</h2>
+    <p>cusPokerTools is a client-side poker equity calculator. All computations run entirely in your browser &mdash; no data is sent to any server.</p>
+    <p><strong>Features:</strong></p>
+    <p>Hold'em and Omaha equity with exhaustive enumeration or Monte Carlo simulation. The Double Board PLO Bomb Pot mode calculates equity across two independent boards with scoop percentages.</p>
+    <p><strong>Card notation:</strong> Rank (2-9, T, J, Q, K, A) + suit (h, d, c, s). Example: AhKs = Ace of hearts, King of spades.</p>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// Navigation
+// ============================================================
+function showPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.getElementById('nav-' + page).classList.add('active');
+}
+
+// ============================================================
+// Hand Slots
+// ============================================================
+let handCount = 0;
+function addHandSlot() {
+  handCount++;
+  const container = document.getElementById('hands-container');
+  const div = document.createElement('div');
+  div.className = 'hand-row';
+  div.id = 'hand-row-' + handCount;
+  const gt = document.getElementById('game-type').value;
+  const ph = gt === 'holdem' ? 'e.g. AhKs' : 'e.g. AhKsQdJc';
+  div.innerHTML = '<span class="hand-label">Hand ' + handCount + ':</span>' +
+    '<input type="text" id="hand-' + handCount + '" placeholder="' + ph + '">' +
+    '<button class="remove-btn" onclick="removeHand(' + handCount + ')" title="Remove">&times;</button>';
+  container.appendChild(div);
+}
+function removeHand(n) {
+  const el = document.getElementById('hand-row-' + n);
+  if (el) el.remove();
+}
+function clearAll() {
+  document.getElementById('board-input').value = '';
+  document.getElementById('board1-input').value = '';
+  document.getElementById('board2-input').value = '';
+  document.getElementById('dead-input').value = '';
+  document.getElementById('hands-container').innerHTML = '';
+  document.getElementById('results-area').innerHTML = '<p class="placeholder-text">Enter hands and click Simulate to calculate equity.</p>';
+  document.getElementById('left-info').innerHTML = '';
+  handCount = 0;
+  for (let i = 0; i < 2; i++) addHandSlot();
+}
+function onGameTypeChange() {
+  const gt = document.getElementById('game-type').value;
+  document.getElementById('board-section-single').style.display = gt === 'doubleboard' ? 'none' : 'block';
+  document.getElementById('board-section-double').style.display = gt === 'doubleboard' ? 'block' : 'none';
+  // update placeholders
+  const ph = gt === 'holdem' ? 'e.g. AhKs' : 'e.g. AhKsQdJc';
+  document.querySelectorAll('#hands-container input').forEach(inp => inp.placeholder = ph);
+}
+
+// Initialize with 2 hand slots
+addHandSlot(); addHandSlot();
+
+// ============================================================
+// Card Parsing & Deck
+// ============================================================
+const RANKS = '23456789TJQKA';
+const SUITS = 'hdcs';
+const RANK_VAL = {}; for (let i = 0; i < 13; i++) RANK_VAL[RANKS[i]] = i + 2; // 2..14
+
+function cardIndex(rank, suit) {
+  return RANKS.indexOf(rank) * 4 + SUITS.indexOf(suit);
+}
+function cardFromIndex(idx) {
+  return { rank: RANKS[Math.floor(idx / 4)], suit: SUITS[idx % 4], idx: idx };
+}
+function cardStr(c) { return c.rank + c.suit; }
+function fullDeck() {
+  const d = [];
+  for (let i = 0; i < 52; i++) d.push(i);
+  return d;
+}
+
+function parseCards(str) {
+  if (!str || !str.trim()) return [];
+  str = str.trim().toUpperCase().replace(/10/g, 'T');
+  const cards = [];
+  let i = 0;
+  while (i < str.length) {
+    if (str[i] === ' ' || str[i] === ',') { i++; continue; }
+    if (i + 1 < str.length) {
+      const r = str[i], s = str[i+1].toLowerCase();
+      if (RANKS.indexOf(r) >= 0 && SUITS.indexOf(s) >= 0) {
+        const idx = cardIndex(r, s);
+        cards.push(idx);
+        i += 2;
+        continue;
+      }
+    }
+    throw new Error('Invalid card at position ' + (i+1) + ': "' + str.substring(i, i+3) + '"');
+  }
+  // Check duplicates
+  const seen = new Set();
+  for (const c of cards) {
+    if (seen.has(c)) {
+      const cd = cardFromIndex(c);
+      throw new Error('Duplicate card: ' + cd.rank + cd.suit);
+    }
+    seen.add(c);
+  }
+  return cards;
+}
+
+function cardsToStr(indices) {
+  return indices.map(i => { const c = cardFromIndex(i); return c.rank + c.suit; }).join(' ');
+}
+
+// ============================================================
+// Hand Evaluation (5-card)
+// ============================================================
+// Returns a numeric score where higher is better.
+// Categories: 9=straight flush, 8=quads, 7=full house, 6=flush,
+// 5=straight, 4=trips, 3=two pair, 2=pair, 1=high card
+// Score = category * 10^10 + tiebreakers
+
+function evaluate5(cardIndices) {
+  const ranks = cardIndices.map(c => Math.floor(c / 4)).sort((a,b) => b - a); // high to low (0=2, 12=A)
+  const suits = cardIndices.map(c => c % 4);
+  const vals = ranks.map(r => r + 2); // 2..14
+
+  // Check flush
+  const isFlush = suits[0] === suits[1] && suits[1] === suits[2] && suits[2] === suits[3] && suits[3] === suits[4];
+
+  // Check straight
+  let isStraight = false;
+  let straightHigh = 0;
+  // Normal straight
+  if (vals[0] - vals[4] === 4 &&
+      vals[0] !== vals[1] && vals[1] !== vals[2] && vals[2] !== vals[3] && vals[3] !== vals[4]) {
+    isStraight = true;
+    straightHigh = vals[0];
+  }
+  // Wheel: A-2-3-4-5
+  if (!isStraight && vals[0] === 14 && vals[1] === 5 && vals[2] === 4 && vals[3] === 3 && vals[4] === 2) {
+    isStraight = true;
+    straightHigh = 5;
+  }
+
+  if (isFlush && isStraight) {
+    return 9e10 + straightHigh;
+  }
+
+  // Count rank frequencies
+  const freq = {};
+  for (const v of vals) freq[v] = (freq[v] || 0) + 1;
+  const groups = Object.entries(freq).map(([v, c]) => [c, +v]).sort((a,b) => b[0] - a[0] || b[1] - a[1]);
+
+  if (groups[0][0] === 4) {
+    // Four of a kind
+    return 8e10 + groups[0][1] * 100 + groups[1][1];
+  }
+  if (groups[0][0] === 3 && groups[1][0] === 2) {
+    // Full house
+    return 7e10 + groups[0][1] * 100 + groups[1][1];
+  }
+  if (isFlush) {
+    return 6e10 + vals[0] * 1e8 + vals[1] * 1e6 + vals[2] * 1e4 + vals[3] * 100 + vals[4];
+  }
+  if (isStraight) {
+    return 5e10 + straightHigh;
+  }
+  if (groups[0][0] === 3) {
+    // Three of a kind
+    const kickers = groups.filter(g => g[0] === 1).map(g => g[1]).sort((a,b) => b - a);
+    return 4e10 + groups[0][1] * 1e6 + kickers[0] * 100 + kickers[1];
+  }
+  if (groups[0][0] === 2 && groups[1][0] === 2) {
+    // Two pair
+    const pairs = groups.filter(g => g[0] === 2).map(g => g[1]).sort((a,b) => b - a);
+    const kicker = groups.filter(g => g[0] === 1).map(g => g[1])[0];
+    return 3e10 + pairs[0] * 1e6 + pairs[1] * 1e4 + kicker;
+  }
+  if (groups[0][0] === 2) {
+    // One pair
+    const kickers = groups.filter(g => g[0] === 1).map(g => g[1]).sort((a,b) => b - a);
+    return 2e10 + groups[0][1] * 1e6 + kickers[0] * 1e4 + kickers[1] * 100 + kickers[2];
+  }
+  // High card
+  return 1e10 + vals[0] * 1e8 + vals[1] * 1e6 + vals[2] * 1e4 + vals[3] * 100 + vals[4];
+}
+
+// ============================================================
+// Best Hand Evaluators
+// ============================================================
+
+// C(n,k) combinations generator - returns array of arrays of indices
+function combinations(arr, k) {
+  const result = [];
+  function combo(start, chosen) {
+    if (chosen.length === k) { result.push(chosen.slice()); return; }
+    for (let i = start; i <= arr.length - (k - chosen.length); i++) {
+      chosen.push(arr[i]);
+      combo(i + 1, chosen);
+      chosen.pop();
+    }
+  }
+  combo(0, []);
+  return result;
+}
+
+function bestHoldemHand(holeCards, boardCards) {
+  const all7 = holeCards.concat(boardCards);
+  let best = -1;
+  const combos = combinations(all7, 5);
+  for (const c of combos) {
+    const score = evaluate5(c);
+    if (score > best) best = score;
+  }
+  return best;
+}
+
+function bestOmahaHand(holeCards, boardCards) {
+  // Must use exactly 2 from hand, exactly 3 from board
+  const handCombos = combinations(holeCards, 2);
+  const boardCombos = combinations(boardCards, 3);
+  let best = -1;
+  for (const h of handCombos) {
+    for (const b of boardCombos) {
+      const score = evaluate5(h.concat(b));
+      if (score > best) best = score;
+    }
+  }
+  return best;
+}
+
+// ============================================================
+// Shuffling / Random
+// ============================================================
+function shuffleArray(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// ============================================================
+// Simulation Engine
+// ============================================================
+
+function runSimulation() {
+  const gameType = document.getElementById('game-type').value;
+  const resultsArea = document.getElementById('results-area');
+  const leftInfo = document.getElementById('left-info');
+  leftInfo.innerHTML = '';
+
+  try {
+    // Parse board(s)
+    let boardCards = [];
+    let board1Cards = [];
+    let board2Cards = [];
+
+    if (gameType === 'doubleboard') {
+      board1Cards = parseCards(document.getElementById('board1-input').value);
+      board2Cards = parseCards(document.getElementById('board2-input').value);
+      if (board1Cards.length > 5) throw new Error('Board 1 has more than 5 cards');
+      if (board2Cards.length > 5) throw new Error('Board 2 has more than 5 cards');
+    } else {
+      boardCards = parseCards(document.getElementById('board-input').value);
+      if (boardCards.length > 5) throw new Error('Board has more than 5 cards');
+    }
+
+    // Parse dead cards
+    const deadCards = parseCards(document.getElementById('dead-input').value);
+
+    // Parse hands
+    const hands = [];
+    const handLabels = [];
+    const inputs = document.querySelectorAll('#hands-container input');
+    inputs.forEach((inp, i) => {
+      const cards = parseCards(inp.value);
+      if (cards.length > 0) {
+        const expectedLen = gameType === 'holdem' ? 2 : 4;
+        if (cards.length !== expectedLen) {
+          throw new Error('Hand ' + (i+1) + ': expected ' + expectedLen + ' cards, got ' + cards.length);
+        }
+        hands.push(cards);
+        handLabels.push(cardsToStr(cards));
+      }
+    });
+
+    if (hands.length < 2) throw new Error('Need at least 2 hands to simulate');
+
+    // Check for duplicate cards across all inputs
+    const allUsed = new Set();
+    function checkAndAdd(cards, label) {
+      for (const c of cards) {
+        if (allUsed.has(c)) {
+          const cd = cardFromIndex(c);
+          throw new Error('Duplicate card ' + cd.rank + cd.suit + ' in ' + label);
+        }
+        allUsed.add(c);
+      }
+    }
+
+    if (gameType === 'doubleboard') {
+      // In double board mode, boards can share cards with each other but not with hands
+      // Actually each board is independent so they CAN share cards? No - in a real game
+      // the two boards are dealt from the same deck, so no card appears on both boards.
+      // But board cards can't overlap with hand cards either.
+      const boardSet = new Set();
+      for (const c of board1Cards) {
+        if (boardSet.has(c)) { const cd = cardFromIndex(c); throw new Error('Duplicate card ' + cd.rank + cd.suit); }
+        boardSet.add(c);
+      }
+      for (const c of board2Cards) {
+        if (boardSet.has(c)) { const cd = cardFromIndex(c); throw new Error('Duplicate card ' + cd.rank + cd.suit + ' appears on both boards'); }
+        boardSet.add(c);
+      }
+      for (const c of board1Cards) allUsed.add(c);
+      for (const c of board2Cards) allUsed.add(c);
+    } else {
+      checkAndAdd(boardCards, 'board');
+    }
+    for (let i = 0; i < hands.length; i++) checkAndAdd(hands[i], 'Hand ' + (i+1));
+    checkAndAdd(deadCards, 'dead cards');
+
+    // Build remaining deck
+    const remaining = [];
+    for (let i = 0; i < 52; i++) {
+      if (!allUsed.has(i)) remaining.push(i);
+    }
+
+    // Show loading
+    resultsArea.innerHTML = '<p class="loading">Simulating...</p>';
+
+    // Use setTimeout to allow UI update before heavy computation
+    setTimeout(() => {
+      try {
+        let results;
+        if (gameType === 'holdem') {
+          results = simulateHoldem(hands, boardCards, remaining);
+        } else if (gameType === 'omaha') {
+          results = simulateOmaha(hands, boardCards, remaining);
+        } else {
+          results = simulateDoubleBoard(hands, board1Cards, board2Cards, remaining);
+        }
+        displayResults(gameType, hands, handLabels, boardCards, board1Cards, board2Cards, results);
+      } catch (e) {
+        resultsArea.innerHTML = '<p class="error-msg">Error: ' + e.message + '</p>';
+      }
+    }, 50);
+
+  } catch (e) {
+    resultsArea.innerHTML = '<p class="error-msg">Error: ' + e.message + '</p>';
+  }
+}
+
+// ============================================================
+// Hold'em Simulation
+// ============================================================
+function simulateHoldem(hands, boardCards, remaining) {
+  const numToRun = 5 - boardCards.length;
+  const nPlayers = hands.length;
+
+  // Determine if exhaustive is feasible
+  const totalCombos = numToRun === 0 ? 1 : comb(remaining.length, numToRun);
+  const exhaustive = totalCombos <= 500000;
+  const trials = exhaustive ? totalCombos : 100000;
+
+  const wins = new Array(nPlayers).fill(0);
+  const ties = new Array(nPlayers).fill(0);
+  let totalTrials = 0;
+
+  if (exhaustive && numToRun > 0) {
+    // Enumerate all combinations
+    enumCombos(remaining, numToRun, (chosen) => {
+      const fullBoard = boardCards.concat(chosen);
+      evaluateHoldemShowdown(hands, fullBoard, wins, ties);
+      totalTrials++;
+    });
+  } else if (numToRun === 0) {
+    evaluateHoldemShowdown(hands, boardCards, wins, ties);
+    totalTrials = 1;
+  } else {
+    // Monte Carlo
+    for (let t = 0; t < trials; t++) {
+      shuffleArray(remaining);
+      const fullBoard = boardCards.concat(remaining.slice(0, numToRun));
+      evaluateHoldemShowdown(hands, fullBoard, wins, ties);
+      totalTrials++;
+    }
+  }
+
+  return {
+    trials: totalTrials,
+    exhaustive: exhaustive,
+    wins: wins,
+    ties: ties,
+    equity: wins.map((w, i) => (w + ties[i]) / totalTrials)
+  };
+}
+
+function evaluateHoldemShowdown(hands, board, wins, ties) {
+  const scores = hands.map(h => bestHoldemHand(h, board));
+  const maxScore = Math.max(...scores);
+  const winners = [];
+  for (let i = 0; i < scores.length; i++) {
+    if (scores[i] === maxScore) winners.push(i);
+  }
+  if (winners.length === 1) {
+    wins[winners[0]]++;
+  } else {
+    const share = 1 / winners.length;
+    for (const w of winners) ties[w] += share;
+  }
+}
+
+// ============================================================
+// Omaha Simulation
+// ============================================================
+function simulateOmaha(hands, boardCards, remaining) {
+  const numToRun = 5 - boardCards.length;
+  const nPlayers = hands.length;
+
+  const totalCombos = numToRun === 0 ? 1 : comb(remaining.length, numToRun);
+  const exhaustive = totalCombos <= 500000;
+  const trials = exhaustive ? totalCombos : 100000;
+
+  const wins = new Array(nPlayers).fill(0);
+  const ties = new Array(nPlayers).fill(0);
+  let totalTrials = 0;
+
+  if (exhaustive && numToRun > 0) {
+    enumCombos(remaining, numToRun, (chosen) => {
+      const fullBoard = boardCards.concat(chosen);
+      evaluateOmahaShowdown(hands, fullBoard, wins, ties);
+      totalTrials++;
+    });
+  } else if (numToRun === 0) {
+    evaluateOmahaShowdown(hands, boardCards, wins, ties);
+    totalTrials = 1;
+  } else {
+    for (let t = 0; t < trials; t++) {
+      shuffleArray(remaining);
+      const fullBoard = boardCards.concat(remaining.slice(0, numToRun));
+      evaluateOmahaShowdown(hands, fullBoard, wins, ties);
+      totalTrials++;
+    }
+  }
+
+  return {
+    trials: totalTrials,
+    exhaustive: exhaustive,
+    wins: wins,
+    ties: ties,
+    equity: wins.map((w, i) => (w + ties[i]) / totalTrials)
+  };
+}
+
+function evaluateOmahaShowdown(hands, board, wins, ties) {
+  const scores = hands.map(h => bestOmahaHand(h, board));
+  const maxScore = Math.max(...scores);
+  const winners = [];
+  for (let i = 0; i < scores.length; i++) {
+    if (scores[i] === maxScore) winners.push(i);
+  }
+  if (winners.length === 1) {
+    wins[winners[0]]++;
+  } else {
+    const share = 1 / winners.length;
+    for (const w of winners) ties[w] += share;
+  }
+}
+
+// ============================================================
+// Double Board PLO Bomb Pot Simulation
+// ============================================================
+function simulateDoubleBoard(hands, board1Cards, board2Cards, remaining) {
+  const need1 = 5 - board1Cards.length;
+  const need2 = 5 - board2Cards.length;
+  const totalNeed = need1 + need2;
+  const nPlayers = hands.length;
+
+  const totalCombos = totalNeed === 0 ? 1 : estimateDoubleBoardCombos(remaining.length, need1, need2);
+  const exhaustive = totalCombos <= 300000 && totalNeed <= 6;
+  const trials = exhaustive ? totalCombos : 50000;
+
+  // Per-player stats
+  const overallEquity = new Array(nPlayers).fill(0);
+  const board1Equity = new Array(nPlayers).fill(0);
+  const board2Equity = new Array(nPlayers).fill(0);
+  const scoopCount = new Array(nPlayers).fill(0);
+  let totalTrials = 0;
+
+  if (totalNeed === 0) {
+    evaluateDoubleBoardShowdown(hands, board1Cards, board2Cards, overallEquity, board1Equity, board2Equity, scoopCount);
+    totalTrials = 1;
+  } else if (exhaustive) {
+    // Enumerate: pick need1 for board1, then need2 for board2 from what's left
+    enumCombos(remaining, need1, (chosen1) => {
+      const fullBoard1 = board1Cards.concat(chosen1);
+      const rem2 = remaining.filter(c => !chosen1.includes(c));
+      enumCombos(rem2, need2, (chosen2) => {
+        const fullBoard2 = board2Cards.concat(chosen2);
+        evaluateDoubleBoardShowdown(hands, fullBoard1, fullBoard2, overallEquity, board1Equity, board2Equity, scoopCount);
+        totalTrials++;
+      });
+    });
+  } else {
+    // Monte Carlo
+    for (let t = 0; t < trials; t++) {
+      shuffleArray(remaining);
+      const fullBoard1 = board1Cards.concat(remaining.slice(0, need1));
+      const fullBoard2 = board2Cards.concat(remaining.slice(need1, need1 + need2));
+      evaluateDoubleBoardShowdown(hands, fullBoard1, fullBoard2, overallEquity, board1Equity, board2Equity, scoopCount);
+      totalTrials++;
+    }
+  }
+
+  return {
+    trials: totalTrials,
+    exhaustive: exhaustive,
+    overallEquity: overallEquity.map(e => e / totalTrials),
+    board1Equity: board1Equity.map(e => e / totalTrials),
+    board2Equity: board2Equity.map(e => e / totalTrials),
+    scoopPct: scoopCount.map(s => s / totalTrials)
+  };
+}
+
+function evaluateDoubleBoardShowdown(hands, board1, board2, overallEquity, board1Equity, board2Equity, scoopCount) {
+  const nPlayers = hands.length;
+
+  // Board 1 winners
+  const scores1 = hands.map(h => bestOmahaHand(h, board1));
+  const max1 = Math.max(...scores1);
+  const winners1 = [];
+  for (let i = 0; i < nPlayers; i++) if (scores1[i] === max1) winners1.push(i);
+
+  // Board 2 winners
+  const scores2 = hands.map(h => bestOmahaHand(h, board2));
+  const max2 = Math.max(...scores2);
+  const winners2 = [];
+  for (let i = 0; i < nPlayers; i++) if (scores2[i] === max2) winners2.push(i);
+
+  const share1 = 0.5 / winners1.length;
+  const share2 = 0.5 / winners2.length;
+
+  for (const w of winners1) {
+    overallEquity[w] += share1;
+    board1Equity[w] += 1 / winners1.length;
+  }
+  for (const w of winners2) {
+    overallEquity[w] += share2;
+    board2Equity[w] += 1 / winners2.length;
+  }
+
+  // Scoop: player wins (or ties for) both boards
+  // Strict scoop = sole winner of both
+  if (winners1.length === 1 && winners2.length === 1 && winners1[0] === winners2[0]) {
+    scoopCount[winners1[0]]++;
+  }
+}
+
+function estimateDoubleBoardCombos(n, k1, k2) {
+  return comb(n, k1) * comb(n - k1, k2);
+}
+
+// ============================================================
+// Combination utilities
+// ============================================================
+function comb(n, k) {
+  if (k > n || k < 0) return 0;
+  if (k === 0 || k === n) return 1;
+  let result = 1;
+  for (let i = 0; i < k; i++) {
+    result = result * (n - i) / (i + 1);
+  }
+  return Math.round(result);
+}
+
+function enumCombos(arr, k, callback) {
+  const n = arr.length;
+  if (k === 0) { callback([]); return; }
+  const indices = [];
+  for (let i = 0; i < k; i++) indices.push(i);
+
+  while (true) {
+    callback(indices.map(i => arr[i]));
+    // Find rightmost index that can be incremented
+    let i = k - 1;
+    while (i >= 0 && indices[i] === n - k + i) i--;
+    if (i < 0) break;
+    indices[i]++;
+    for (let j = i + 1; j < k; j++) indices[j] = indices[j-1] + 1;
+  }
+}
+
+// ============================================================
+// Display Results
+// ============================================================
+function displayResults(gameType, hands, handLabels, boardCards, board1Cards, board2Cards, results) {
+  const area = document.getElementById('results-area');
+  let html = '';
+
+  const gameNames = { holdem: "Hold'em", omaha: 'Omaha (PLO4)', doubleboard: 'Double Board PLO Bomb Pot' };
+  html += '<div class="results-title">' + gameNames[gameType] + ' Simulation</div>';
+
+  const methodStr = results.exhaustive ? 'Exhaustive' : 'Monte Carlo';
+  const trialCount = results.trials !== undefined ? results.trials : results.trials;
+  html += '<div class="results-info">' + trialCount.toLocaleString() + ' trials (' + methodStr + ')</div>';
+
+  if (gameType === 'doubleboard') {
+    if (board1Cards.length > 0) html += '<div class="results-board">Board 1: ' + formatCards(board1Cards) + '</div>';
+    if (board2Cards.length > 0) html += '<div class="results-board">Board 2: ' + formatCards(board2Cards) + '</div>';
+
+    html += '<table class="results-table"><tr><th>Hand</th><th>Overall Equity</th><th>Board 1 Equity</th><th>Board 2 Equity</th><th>Scoop %</th></tr>';
+    for (let i = 0; i < hands.length; i++) {
+      html += '<tr>';
+      html += '<td style="font-family:monospace;">' + formatCards(hands[i]) + '</td>';
+      html += '<td class="equity-cell">' + (results.overallEquity[i] * 100).toFixed(2) + '%</td>';
+      html += '<td>' + (results.board1Equity[i] * 100).toFixed(2) + '%</td>';
+      html += '<td>' + (results.board2Equity[i] * 100).toFixed(2) + '%</td>';
+      html += '<td>' + (results.scoopPct[i] * 100).toFixed(2) + '%</td>';
+      html += '</tr>';
+    }
+    html += '</table>';
+  } else {
+    if (boardCards.length > 0) html += '<div class="results-board">Board: ' + formatCards(boardCards) + '</div>';
+
+    html += '<table class="results-table"><tr><th>Hand</th><th>Equity</th><th>Wins</th><th>Ties</th></tr>';
+    for (let i = 0; i < hands.length; i++) {
+      const eq = results.equity[i] * 100;
+      const winPct = (results.wins[i] / results.trials * 100).toFixed(2);
+      const tiePct = (results.ties[i] / results.trials * 100).toFixed(2);
+      html += '<tr>';
+      html += '<td style="font-family:monospace;">' + formatCards(hands[i]) + '</td>';
+      html += '<td class="equity-cell">' + eq.toFixed(2) + '%</td>';
+      html += '<td>' + winPct + '%</td>';
+      html += '<td>' + tiePct + '%</td>';
+      html += '</tr>';
+    }
+    html += '</table>';
+  }
+
+  area.innerHTML = html;
+}
+
+function formatCards(cardIndices) {
+  return cardIndices.map(idx => {
+    const c = cardFromIndex(idx);
+    const suitClass = 'suit-' + c.suit;
+    const suitSymbol = { h: '\u2665', d: '\u2666', c: '\u2663', s: '\u2660' }[c.suit];
+    return '<span class="' + suitClass + '">' + c.rank + suitSymbol + '</span>';
+  }).join(' ');
+}
+
+// ============================================================
+// Utility Buttons
+// ============================================================
+function countCombos() {
+  const info = document.getElementById('left-info');
+  try {
+    const gameType = document.getElementById('game-type').value;
+    let boardLen;
+    if (gameType === 'doubleboard') {
+      const b1 = parseCards(document.getElementById('board1-input').value);
+      const b2 = parseCards(document.getElementById('board2-input').value);
+      boardLen = b1.length + b2.length;
+      const allUsed = new Set([...b1, ...b2]);
+      const deadCards = parseCards(document.getElementById('dead-input').value);
+      deadCards.forEach(c => allUsed.add(c));
+      const inputs = document.querySelectorAll('#hands-container input');
+      inputs.forEach(inp => { parseCards(inp.value).forEach(c => allUsed.add(c)); });
+      const remaining = 52 - allUsed.size;
+      const need1 = 5 - b1.length;
+      const need2 = 5 - b2.length;
+      const combos = estimateDoubleBoardCombos(remaining, need1, need2);
+      info.innerHTML = 'Remaining deck: ' + remaining + ' cards<br>Board runouts: ' + combos.toLocaleString();
+    } else {
+      const bc = parseCards(document.getElementById('board-input').value);
+      boardLen = bc.length;
+      const allUsed = new Set(bc);
+      const deadCards = parseCards(document.getElementById('dead-input').value);
+      deadCards.forEach(c => allUsed.add(c));
+      const inputs = document.querySelectorAll('#hands-container input');
+      inputs.forEach(inp => { parseCards(inp.value).forEach(c => allUsed.add(c)); });
+      const remaining = 52 - allUsed.size;
+      const need = 5 - boardLen;
+      const combos = comb(remaining, need);
+      info.innerHTML = 'Remaining deck: ' + remaining + ' cards<br>Board runouts: ' + combos.toLocaleString();
+    }
+  } catch(e) {
+    info.innerHTML = '<span style="color:#c00">' + e.message + '</span>';
+  }
+}
+
+function rankHand() {
+  const info = document.getElementById('left-info');
+  try {
+    const gameType = document.getElementById('game-type').value;
+    let boardCards = [];
+    if (gameType === 'doubleboard') {
+      info.innerHTML = 'Rank not available for Double Board mode. Use a single board.';
+      return;
+    }
+    boardCards = parseCards(document.getElementById('board-input').value);
+    if (boardCards.length !== 5) { info.innerHTML = 'Need exactly 5 board cards to rank.'; return; }
+
+    const inputs = document.querySelectorAll('#hands-container input');
+    let msg = '';
+    let handIdx = 0;
+    inputs.forEach(inp => {
+      handIdx++;
+      const hc = parseCards(inp.value);
+      if (hc.length === 0) return;
+      let score;
+      if (gameType === 'holdem') {
+        score = bestHoldemHand(hc, boardCards);
+      } else {
+        score = bestOmahaHand(hc, boardCards);
+      }
+      const cat = Math.floor(score / 1e10);
+      const catNames = { 9:'Straight Flush', 8:'Four of a Kind', 7:'Full House', 6:'Flush', 5:'Straight', 4:'Three of a Kind', 3:'Two Pair', 2:'One Pair', 1:'High Card' };
+      msg += 'Hand ' + handIdx + ': ' + (catNames[cat] || 'Unknown') + '<br>';
+    });
+    info.innerHTML = msg || 'No hands to rank.';
+  } catch(e) {
+    info.innerHTML = '<span style="color:#c00">' + e.message + '</span>';
+  }
+}
+
+function toEnglish() {
+  const info = document.getElementById('left-info');
+  try {
+    const inputs = document.querySelectorAll('#hands-container input');
+    let msg = '';
+    let handIdx = 0;
+    const rankNames = { '2':'Deuce','3':'Three','4':'Four','5':'Five','6':'Six','7':'Seven','8':'Eight','9':'Nine','T':'Ten','J':'Jack','Q':'Queen','K':'King','A':'Ace' };
+    const suitNames = { h:'hearts', d:'diamonds', c:'clubs', s:'spades' };
+    inputs.forEach(inp => {
+      handIdx++;
+      const hc = parseCards(inp.value);
+      if (hc.length === 0) return;
+      const english = hc.map(idx => {
+        const c = cardFromIndex(idx);
+        return rankNames[c.rank] + ' of ' + suitNames[c.suit];
+      }).join(', ');
+      msg += 'Hand ' + handIdx + ': ' + english + '<br>';
+    });
+    info.innerHTML = msg || 'No hands entered.';
+  } catch(e) {
+    info.innerHTML = '<span style="color:#c00">' + e.message + '</span>';
+  }
+}
+
+</script>
+</body>
+</html>
