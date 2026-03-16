@@ -89,6 +89,137 @@ table.results-table .equity-cell { font-weight: bold; }
 .about-content p, .home-content p { margin-bottom: 10px; line-height: 1.5; }
 .home-content ul { margin: 10px 0 10px 25px; }
 .home-content li { margin-bottom: 5px; }
+
+/* ==================== AI Assistant Styles ==================== */
+.ai-container {
+  max-width: 900px; margin: 0 auto; padding: 15px;
+  display: flex; flex-direction: column; height: calc(100vh - 100px);
+}
+.ai-top-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 15px; background: #4a7c59; color: white; border-radius: 8px 8px 0 0;
+}
+.ai-top-bar h3 { font-size: 15px; font-weight: bold; }
+.ai-settings-btn {
+  background: none; border: 1px solid rgba(255,255,255,0.4); color: white;
+  padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 18px;
+}
+.ai-settings-btn:hover { background: rgba(255,255,255,0.15); }
+.ai-chat-area {
+  flex: 1; overflow-y: auto; background: white; border-left: 1px solid #ccc;
+  border-right: 1px solid #ccc; padding: 15px; display: flex; flex-direction: column; gap: 12px;
+}
+.ai-msg {
+  max-width: 80%; padding: 10px 14px; border-radius: 12px; font-size: 13px;
+  line-height: 1.55; word-wrap: break-word; white-space: pre-wrap;
+}
+.ai-msg-user {
+  align-self: flex-end; background: #4a7c59; color: white; border-bottom-right-radius: 3px;
+}
+.ai-msg-ai {
+  align-self: flex-start; background: #f0f0f0; color: #222; border-bottom-left-radius: 3px;
+}
+.ai-msg-system {
+  align-self: center; background: #fff8e1; color: #795548; font-size: 12px;
+  padding: 6px 12px; border-radius: 6px; border: 1px solid #ffe0b2;
+}
+.ai-msg-ai table { margin: 8px 0; border-collapse: collapse; width: 100%; font-size: 12px; }
+.ai-msg-ai table th { background: #5a8c69; color: white; padding: 5px 8px; text-align: left; border: 1px solid #4a7c59; }
+.ai-msg-ai table td { padding: 4px 8px; border: 1px solid #ccc; }
+.ai-msg-ai table tr:nth-child(even) { background: #f0f8f2; }
+.ai-msg-ai strong { font-weight: bold; }
+.ai-msg-ai em { font-style: italic; }
+.ai-msg-ai code { background: #e8e8e8; padding: 1px 4px; border-radius: 3px; font-family: 'Courier New', monospace; font-size: 12px; }
+.ai-msg-ai h1, .ai-msg-ai h2, .ai-msg-ai h3, .ai-msg-ai h4 { margin: 8px 0 4px; }
+.ai-msg-ai h3 { font-size: 14px; }
+.ai-msg-ai h4 { font-size: 13px; }
+.ai-msg-ai ul, .ai-msg-ai ol { margin: 4px 0 4px 18px; }
+.ai-msg-ai li { margin-bottom: 2px; }
+.ai-msg-ai hr { border: none; border-top: 1px solid #ccc; margin: 8px 0; }
+.ai-input-bar {
+  display: flex; gap: 8px; padding: 10px 15px;
+  background: #e8f5e9; border: 1px solid #b8d4bc; border-radius: 0 0 8px 8px;
+}
+.ai-input-bar textarea {
+  flex: 1; padding: 8px 10px; border: 1px solid #aaa; border-radius: 6px;
+  font-size: 13px; font-family: Arial, sans-serif; resize: none; min-height: 40px;
+  max-height: 120px; line-height: 1.4;
+}
+.ai-input-bar textarea:focus { outline: none; border-color: #4a7c59; }
+.ai-send-btn {
+  padding: 8px 20px; background: #4a7c59; color: white; border: none;
+  border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold;
+  align-self: flex-end;
+}
+.ai-send-btn:hover { background: #3d6b4a; }
+.ai-send-btn:disabled { background: #999; cursor: not-allowed; }
+
+/* History section */
+.ai-history-section {
+  margin-top: 10px; background: white; border: 1px solid #ccc; border-radius: 8px; overflow: hidden;
+}
+.ai-history-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 15px; background: #f5f5f5; border-bottom: 1px solid #ccc; cursor: pointer;
+  font-size: 13px; font-weight: bold; color: #555;
+}
+.ai-history-header:hover { background: #eee; }
+.ai-history-body { max-height: 250px; overflow-y: auto; }
+.ai-history-item {
+  padding: 8px 15px; border-bottom: 1px solid #eee; cursor: pointer; font-size: 12px;
+}
+.ai-history-item:hover { background: #f0f8f2; }
+.ai-history-item .hist-time { color: #888; font-size: 11px; }
+.ai-history-item .hist-query { color: #333; margin-top: 2px; }
+.ai-history-detail {
+  display: none; padding: 8px 15px 12px; background: #fafafa; font-size: 12px;
+  border-bottom: 1px solid #ddd; line-height: 1.5;
+}
+.ai-history-detail pre {
+  background: #e8e8e8; padding: 6px; border-radius: 4px; white-space: pre-wrap;
+  font-size: 11px; margin: 4px 0;
+}
+
+/* Settings Modal */
+.modal-overlay {
+  display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;
+}
+.modal-overlay.active { display: flex; }
+.modal-box {
+  background: white; border-radius: 10px; padding: 25px; width: 420px;
+  max-width: 90vw; box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+}
+.modal-box h3 { margin-bottom: 15px; color: #4a7c59; }
+.modal-box label { display: block; font-weight: bold; margin-bottom: 4px; font-size: 12px; color: #555; }
+.modal-box input[type="password"], .modal-box input[type="text"] {
+  width: 100%; padding: 8px 10px; border: 1px solid #aaa; border-radius: 4px;
+  font-size: 13px; font-family: 'Courier New', monospace; margin-bottom: 15px;
+}
+.modal-box .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+.modal-box .modal-btns button {
+  padding: 8px 18px; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: bold;
+}
+.modal-save { background: #4a7c59; color: white; border: none; }
+.modal-save:hover { background: #3d6b4a; }
+.modal-cancel { background: #eee; color: #333; border: 1px solid #aaa; }
+.modal-cancel:hover { background: #ddd; }
+
+/* Typing indicator */
+.typing-indicator {
+  align-self: flex-start; padding: 10px 14px; background: #f0f0f0;
+  border-radius: 12px; border-bottom-left-radius: 3px;
+}
+.typing-indicator span {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: #999; margin-right: 4px; animation: typingBounce 1.2s infinite;
+}
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; margin-right: 0; }
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-5px); }
+}
 </style>
 </head>
 <body>
@@ -100,6 +231,7 @@ table.results-table .equity-cell { font-weight: bold; }
 <div class="nav">
   <a id="nav-home" onclick="showPage('home')">Home</a>
   <a id="nav-sim" class="active" onclick="showPage('sim')">Simulations</a>
+  <a id="nav-ai" onclick="showPage('ai')">AI Assistant</a>
   <a id="nav-about" onclick="showPage('about')">About</a>
 </div>
 
@@ -114,7 +246,7 @@ table.results-table .equity-cell { font-weight: bold; }
       <li><strong>Omaha (PLO4)</strong> &mdash; Pot Limit Omaha with 4 hole cards (must use exactly 2)</li>
       <li><strong>Double Board PLO Bomb Pot</strong> &mdash; PLO with two independent boards; pot split between board winners</li>
     </ul>
-    <p>Click <strong>Simulations</strong> to get started.</p>
+    <p>Click <strong>Simulations</strong> to get started, or try the <strong>AI Assistant</strong> to describe scenarios in plain English.</p>
   </div>
 </div>
 
@@ -167,6 +299,32 @@ table.results-table .equity-cell { font-weight: bold; }
   </div>
 </div>
 
+<!-- AI Assistant Page -->
+<div id="page-ai" class="page">
+  <div class="ai-container">
+    <div class="ai-top-bar">
+      <h3>AI Poker Assistant</h3>
+      <button class="ai-settings-btn" onclick="openSettingsModal()" title="Settings">&#9881;</button>
+    </div>
+    <div class="ai-chat-area" id="ai-chat-area">
+      <div class="ai-msg ai-msg-system">
+        Describe any poker scenario in plain English and I will analyze it, run equity calculations, and explain the results. Try something like: "I had AAKK in a double board bomb pot against 5 opponents..."
+      </div>
+    </div>
+    <div class="ai-input-bar">
+      <textarea id="ai-input" placeholder="Describe a poker scenario..." rows="1" onkeydown="aiInputKeydown(event)"></textarea>
+      <button class="ai-send-btn" id="ai-send-btn" onclick="aiSend()">Send</button>
+    </div>
+    <div class="ai-history-section" id="ai-history-section">
+      <div class="ai-history-header" onclick="toggleHistory()">
+        <span>History</span>
+        <span id="history-toggle-icon">&#9660;</span>
+      </div>
+      <div class="ai-history-body" id="ai-history-body" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
 <!-- About Page -->
 <div id="page-about" class="page">
   <div class="about-content">
@@ -175,6 +333,21 @@ table.results-table .equity-cell { font-weight: bold; }
     <p><strong>Features:</strong></p>
     <p>Hold'em and Omaha equity with exhaustive enumeration or Monte Carlo simulation. The Double Board PLO Bomb Pot mode calculates equity across two independent boards with scoop percentages.</p>
     <p><strong>Card notation:</strong> Rank (2-9, T, J, Q, K, A) + suit (h, d, c, s). Example: AhKs = Ace of hearts, King of spades.</p>
+    <p><strong>AI Assistant:</strong> Describe poker scenarios in plain English. The AI will parse your scenario, ask clarifying questions, run equity calculations, and provide analysis. Requires a Claude API key (set in AI Assistant settings).</p>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal-box">
+    <h3>AI Assistant Settings</h3>
+    <label for="api-key-input">Claude API Key</label>
+    <input type="password" id="api-key-input" placeholder="sk-ant-...">
+    <p style="font-size:11px; color:#888; margin-top:-10px; margin-bottom:15px;">Your API key is stored locally in your browser and never sent anywhere except the Anthropic API.</p>
+    <div class="modal-btns">
+      <button class="modal-cancel" onclick="closeSettingsModal()">Cancel</button>
+      <button class="modal-save" onclick="saveSettings()">Save</button>
+    </div>
   </div>
 </div>
 
@@ -187,6 +360,11 @@ function showPage(page) {
   document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   document.getElementById('nav-' + page).classList.add('active');
+  if (page === 'ai') {
+    renderHistory();
+    const chatArea = document.getElementById('ai-chat-area');
+    chatArea.scrollTop = chatArea.scrollHeight;
+  }
 }
 
 // ============================================================
@@ -290,29 +468,20 @@ function cardsToStr(indices) {
 // ============================================================
 // Hand Evaluation (5-card)
 // ============================================================
-// Returns a numeric score where higher is better.
-// Categories: 9=straight flush, 8=quads, 7=full house, 6=flush,
-// 5=straight, 4=trips, 3=two pair, 2=pair, 1=high card
-// Score = category * 10^10 + tiebreakers
-
 function evaluate5(cardIndices) {
-  const ranks = cardIndices.map(c => Math.floor(c / 4)).sort((a,b) => b - a); // high to low (0=2, 12=A)
+  const ranks = cardIndices.map(c => Math.floor(c / 4)).sort((a,b) => b - a);
   const suits = cardIndices.map(c => c % 4);
-  const vals = ranks.map(r => r + 2); // 2..14
+  const vals = ranks.map(r => r + 2);
 
-  // Check flush
   const isFlush = suits[0] === suits[1] && suits[1] === suits[2] && suits[2] === suits[3] && suits[3] === suits[4];
 
-  // Check straight
   let isStraight = false;
   let straightHigh = 0;
-  // Normal straight
   if (vals[0] - vals[4] === 4 &&
       vals[0] !== vals[1] && vals[1] !== vals[2] && vals[2] !== vals[3] && vals[3] !== vals[4]) {
     isStraight = true;
     straightHigh = vals[0];
   }
-  // Wheel: A-2-3-4-5
   if (!isStraight && vals[0] === 14 && vals[1] === 5 && vals[2] === 4 && vals[3] === 3 && vals[4] === 2) {
     isStraight = true;
     straightHigh = 5;
@@ -322,17 +491,14 @@ function evaluate5(cardIndices) {
     return 9e10 + straightHigh;
   }
 
-  // Count rank frequencies
   const freq = {};
   for (const v of vals) freq[v] = (freq[v] || 0) + 1;
   const groups = Object.entries(freq).map(([v, c]) => [c, +v]).sort((a,b) => b[0] - a[0] || b[1] - a[1]);
 
   if (groups[0][0] === 4) {
-    // Four of a kind
     return 8e10 + groups[0][1] * 100 + groups[1][1];
   }
   if (groups[0][0] === 3 && groups[1][0] === 2) {
-    // Full house
     return 7e10 + groups[0][1] * 100 + groups[1][1];
   }
   if (isFlush) {
@@ -342,30 +508,24 @@ function evaluate5(cardIndices) {
     return 5e10 + straightHigh;
   }
   if (groups[0][0] === 3) {
-    // Three of a kind
     const kickers = groups.filter(g => g[0] === 1).map(g => g[1]).sort((a,b) => b - a);
     return 4e10 + groups[0][1] * 1e6 + kickers[0] * 100 + kickers[1];
   }
   if (groups[0][0] === 2 && groups[1][0] === 2) {
-    // Two pair
     const pairs = groups.filter(g => g[0] === 2).map(g => g[1]).sort((a,b) => b - a);
     const kicker = groups.filter(g => g[0] === 1).map(g => g[1])[0];
     return 3e10 + pairs[0] * 1e6 + pairs[1] * 1e4 + kicker;
   }
   if (groups[0][0] === 2) {
-    // One pair
     const kickers = groups.filter(g => g[0] === 1).map(g => g[1]).sort((a,b) => b - a);
     return 2e10 + groups[0][1] * 1e6 + kickers[0] * 1e4 + kickers[1] * 100 + kickers[2];
   }
-  // High card
   return 1e10 + vals[0] * 1e8 + vals[1] * 1e6 + vals[2] * 1e4 + vals[3] * 100 + vals[4];
 }
 
 // ============================================================
 // Best Hand Evaluators
 // ============================================================
-
-// C(n,k) combinations generator - returns array of arrays of indices
 function combinations(arr, k) {
   const result = [];
   function combo(start, chosen) {
@@ -392,7 +552,6 @@ function bestHoldemHand(holeCards, boardCards) {
 }
 
 function bestOmahaHand(holeCards, boardCards) {
-  // Must use exactly 2 from hand, exactly 3 from board
   const handCombos = combinations(holeCards, 2);
   const boardCombos = combinations(boardCards, 3);
   let best = -1;
@@ -427,7 +586,6 @@ function runSimulation() {
   leftInfo.innerHTML = '';
 
   try {
-    // Parse board(s)
     let boardCards = [];
     let board1Cards = [];
     let board2Cards = [];
@@ -442,10 +600,8 @@ function runSimulation() {
       if (boardCards.length > 5) throw new Error('Board has more than 5 cards');
     }
 
-    // Parse dead cards
     const deadCards = parseCards(document.getElementById('dead-input').value);
 
-    // Parse hands
     const hands = [];
     const handLabels = [];
     const inputs = document.querySelectorAll('#hands-container input');
@@ -463,7 +619,6 @@ function runSimulation() {
 
     if (hands.length < 2) throw new Error('Need at least 2 hands to simulate');
 
-    // Check for duplicate cards across all inputs
     const allUsed = new Set();
     function checkAndAdd(cards, label) {
       for (const c of cards) {
@@ -476,10 +631,6 @@ function runSimulation() {
     }
 
     if (gameType === 'doubleboard') {
-      // In double board mode, boards can share cards with each other but not with hands
-      // Actually each board is independent so they CAN share cards? No - in a real game
-      // the two boards are dealt from the same deck, so no card appears on both boards.
-      // But board cards can't overlap with hand cards either.
       const boardSet = new Set();
       for (const c of board1Cards) {
         if (boardSet.has(c)) { const cd = cardFromIndex(c); throw new Error('Duplicate card ' + cd.rank + cd.suit); }
@@ -497,16 +648,13 @@ function runSimulation() {
     for (let i = 0; i < hands.length; i++) checkAndAdd(hands[i], 'Hand ' + (i+1));
     checkAndAdd(deadCards, 'dead cards');
 
-    // Build remaining deck
     const remaining = [];
     for (let i = 0; i < 52; i++) {
       if (!allUsed.has(i)) remaining.push(i);
     }
 
-    // Show loading
     resultsArea.innerHTML = '<p class="loading">Simulating...</p>';
 
-    // Use setTimeout to allow UI update before heavy computation
     setTimeout(() => {
       try {
         let results;
@@ -535,7 +683,6 @@ function simulateHoldem(hands, boardCards, remaining) {
   const numToRun = 5 - boardCards.length;
   const nPlayers = hands.length;
 
-  // Determine if exhaustive is feasible
   const totalCombos = numToRun === 0 ? 1 : comb(remaining.length, numToRun);
   const exhaustive = totalCombos <= 500000;
   const trials = exhaustive ? totalCombos : 100000;
@@ -545,7 +692,6 @@ function simulateHoldem(hands, boardCards, remaining) {
   let totalTrials = 0;
 
   if (exhaustive && numToRun > 0) {
-    // Enumerate all combinations
     enumCombos(remaining, numToRun, (chosen) => {
       const fullBoard = boardCards.concat(chosen);
       evaluateHoldemShowdown(hands, fullBoard, wins, ties);
@@ -555,7 +701,6 @@ function simulateHoldem(hands, boardCards, remaining) {
     evaluateHoldemShowdown(hands, boardCards, wins, ties);
     totalTrials = 1;
   } else {
-    // Monte Carlo
     for (let t = 0; t < trials; t++) {
       shuffleArray(remaining);
       const fullBoard = boardCards.concat(remaining.slice(0, numToRun));
@@ -658,7 +803,6 @@ function simulateDoubleBoard(hands, board1Cards, board2Cards, remaining) {
   const exhaustive = totalCombos <= 300000 && totalNeed <= 6;
   const trials = exhaustive ? totalCombos : 50000;
 
-  // Per-player stats
   const overallEquity = new Array(nPlayers).fill(0);
   const board1Equity = new Array(nPlayers).fill(0);
   const board2Equity = new Array(nPlayers).fill(0);
@@ -669,7 +813,6 @@ function simulateDoubleBoard(hands, board1Cards, board2Cards, remaining) {
     evaluateDoubleBoardShowdown(hands, board1Cards, board2Cards, overallEquity, board1Equity, board2Equity, scoopCount);
     totalTrials = 1;
   } else if (exhaustive) {
-    // Enumerate: pick need1 for board1, then need2 for board2 from what's left
     enumCombos(remaining, need1, (chosen1) => {
       const fullBoard1 = board1Cards.concat(chosen1);
       const rem2 = remaining.filter(c => !chosen1.includes(c));
@@ -680,7 +823,6 @@ function simulateDoubleBoard(hands, board1Cards, board2Cards, remaining) {
       });
     });
   } else {
-    // Monte Carlo
     for (let t = 0; t < trials; t++) {
       shuffleArray(remaining);
       const fullBoard1 = board1Cards.concat(remaining.slice(0, need1));
@@ -703,13 +845,11 @@ function simulateDoubleBoard(hands, board1Cards, board2Cards, remaining) {
 function evaluateDoubleBoardShowdown(hands, board1, board2, overallEquity, board1Equity, board2Equity, scoopCount) {
   const nPlayers = hands.length;
 
-  // Board 1 winners
   const scores1 = hands.map(h => bestOmahaHand(h, board1));
   const max1 = Math.max(...scores1);
   const winners1 = [];
   for (let i = 0; i < nPlayers; i++) if (scores1[i] === max1) winners1.push(i);
 
-  // Board 2 winners
   const scores2 = hands.map(h => bestOmahaHand(h, board2));
   const max2 = Math.max(...scores2);
   const winners2 = [];
@@ -727,8 +867,6 @@ function evaluateDoubleBoardShowdown(hands, board1, board2, overallEquity, board
     board2Equity[w] += 1 / winners2.length;
   }
 
-  // Scoop: player wins (or ties for) both boards
-  // Strict scoop = sole winner of both
   if (winners1.length === 1 && winners2.length === 1 && winners1[0] === winners2[0]) {
     scoopCount[winners1[0]]++;
   }
@@ -759,7 +897,6 @@ function enumCombos(arr, k, callback) {
 
   while (true) {
     callback(indices.map(i => arr[i]));
-    // Find rightmost index that can be incremented
     let i = k - 1;
     while (i >= 0 && indices[i] === n - k + i) i--;
     if (i < 0) break;
@@ -925,6 +1062,828 @@ function toEnglish() {
     info.innerHTML = '<span style="color:#c00">' + e.message + '</span>';
   }
 }
+
+// ============================================================
+// PLO Hand Range Tiers
+// ============================================================
+// Each tier is defined as a set of hand patterns (rank combinations).
+// Hands are generated as 4-card PLO hands. We define structural templates
+// and then generate concrete hands from them with random suits.
+
+const PLO_TIERS = {
+  5: [
+    // AAxx double suited, KKxx double suited, AAKK, AAQQ, AAJJ, AAT9ds, high rundowns ds
+    {ranks: ['A','A','K','K'], weight: 3},
+    {ranks: ['A','A','Q','Q'], weight: 3},
+    {ranks: ['A','A','J','J'], weight: 3},
+    {ranks: ['A','A','T','T'], weight: 2},
+    {ranks: ['A','A','T','9'], weight: 2, suited: true},
+    {ranks: ['A','A','J','T'], weight: 2, suited: true},
+    {ranks: ['A','A','K','Q'], weight: 2, suited: true},
+    {ranks: ['A','A','K','J'], weight: 2, suited: true},
+    {ranks: ['K','K','Q','Q'], weight: 2, suited: true},
+    {ranks: ['K','K','Q','J'], weight: 2, suited: true},
+    {ranks: ['K','Q','J','T'], weight: 3, suited: true},
+    {ranks: ['Q','J','T','9'], weight: 3, suited: true},
+    {ranks: ['J','T','9','8'], weight: 2, suited: true},
+  ],
+  10: [
+    // All top 5 plus: single-suited AAxx, KKxx, QQxx ds, high rundowns, suited aces w/ connectors
+    {ranks: ['A','A','K','Q'], weight: 2},
+    {ranks: ['A','A','K','J'], weight: 2},
+    {ranks: ['A','A','Q','J'], weight: 2},
+    {ranks: ['A','A','J','T'], weight: 2},
+    {ranks: ['A','A','9','8'], weight: 1, suited: true},
+    {ranks: ['K','K','J','T'], weight: 2},
+    {ranks: ['K','K','A','Q'], weight: 2},
+    {ranks: ['K','K','A','J'], weight: 2},
+    {ranks: ['Q','Q','J','T'], weight: 2, suited: true},
+    {ranks: ['Q','Q','A','K'], weight: 2},
+    {ranks: ['J','T','9','8'], weight: 3},
+    {ranks: ['T','9','8','7'], weight: 2, suited: true},
+    {ranks: ['A','K','Q','J'], weight: 2},
+    {ranks: ['A','Q','J','T'], weight: 2},
+    {ranks: ['A','5','4','3'], weight: 1, suited: true},
+    {ranks: ['A','4','3','2'], weight: 1, suited: true},
+  ],
+  20: [
+    // Wider: any AAxx, suited KK/QQ/JJ, medium rundowns, suited ace + connectors
+    {ranks: ['A','A','8','7'], weight: 1},
+    {ranks: ['A','A','6','5'], weight: 1},
+    {ranks: ['A','A','5','4'], weight: 1},
+    {ranks: ['A','A','3','2'], weight: 1},
+    {ranks: ['A','A','9','7'], weight: 1},
+    {ranks: ['K','K','T','9'], weight: 2},
+    {ranks: ['K','K','9','8'], weight: 1},
+    {ranks: ['Q','Q','J','9'], weight: 2},
+    {ranks: ['Q','Q','T','9'], weight: 2},
+    {ranks: ['J','J','T','9'], weight: 2},
+    {ranks: ['J','J','Q','K'], weight: 1},
+    {ranks: ['T','9','8','7'], weight: 3},
+    {ranks: ['9','8','7','6'], weight: 2},
+    {ranks: ['8','7','6','5'], weight: 2},
+    {ranks: ['A','K','T','9'], weight: 1, suited: true},
+    {ranks: ['A','Q','T','9'], weight: 1},
+    {ranks: ['A','J','T','9'], weight: 1},
+    {ranks: ['K','Q','J','9'], weight: 2},
+    {ranks: ['K','Q','T','9'], weight: 2},
+    {ranks: ['A','7','6','5'], weight: 1, suited: true},
+    {ranks: ['A','6','5','4'], weight: 1, suited: true},
+  ],
+  30: [
+    // Very wide: any big pair, any 4-connected, suited aces
+    {ranks: ['K','K','7','6'], weight: 1},
+    {ranks: ['K','K','5','4'], weight: 1},
+    {ranks: ['Q','Q','8','7'], weight: 1},
+    {ranks: ['Q','Q','6','5'], weight: 1},
+    {ranks: ['J','J','8','7'], weight: 1},
+    {ranks: ['J','J','9','8'], weight: 1},
+    {ranks: ['T','T','9','8'], weight: 2},
+    {ranks: ['T','T','J','Q'], weight: 1},
+    {ranks: ['9','9','8','7'], weight: 1},
+    {ranks: ['9','9','T','J'], weight: 1},
+    {ranks: ['7','6','5','4'], weight: 2},
+    {ranks: ['6','5','4','3'], weight: 2},
+    {ranks: ['5','4','3','2'], weight: 1},
+    {ranks: ['A','9','8','7'], weight: 1},
+    {ranks: ['A','8','7','6'], weight: 1},
+    {ranks: ['A','3','2','K'], weight: 1},
+    {ranks: ['K','J','T','9'], weight: 1},
+    {ranks: ['K','T','9','8'], weight: 1},
+    {ranks: ['Q','J','9','8'], weight: 1},
+    {ranks: ['Q','T','9','8'], weight: 1},
+    {ranks: ['8','8','7','6'], weight: 1},
+    {ranks: ['7','7','6','5'], weight: 1},
+  ]
+};
+
+function getTierHands(pctile) {
+  // Collect all templates up to and including the requested percentile tier
+  let templates = [];
+  const tiers = [5, 10, 20, 30];
+  for (const t of tiers) {
+    if (t <= pctile && PLO_TIERS[t]) {
+      templates = templates.concat(PLO_TIERS[t]);
+    }
+  }
+  // If user asks for something > 30%, use the 30% tier
+  if (templates.length === 0) {
+    templates = PLO_TIERS[30] || PLO_TIERS[20] || PLO_TIERS[10] || PLO_TIERS[5];
+  }
+  return templates;
+}
+
+function generateRandomPLOHand(usedCards, pctile) {
+  // Generate a random PLO hand from the given percentile tier
+  const templates = getTierHands(pctile);
+  const maxAttempts = 200;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    // Pick a weighted random template
+    const totalWeight = templates.reduce((s, t) => s + t.weight, 0);
+    let r = Math.random() * totalWeight;
+    let chosen = templates[0];
+    for (const t of templates) {
+      r -= t.weight;
+      if (r <= 0) { chosen = t; break; }
+    }
+
+    // Assign random suits
+    const ranks = chosen.ranks.slice();
+    const availSuits = ['h', 'd', 'c', 's'];
+    const hand = [];
+    let valid = true;
+
+    if (chosen.suited) {
+      // Make at least one pair share a suit (single suited)
+      const s1 = availSuits[Math.floor(Math.random() * 4)];
+      const remaining3 = availSuits.filter(s => s !== s1);
+      // First two cards share suit s1 if possible, rest random
+      const suitAssign = [s1, s1];
+      suitAssign.push(remaining3[Math.floor(Math.random() * 3)]);
+      suitAssign.push(availSuits[Math.floor(Math.random() * 4)]);
+      // Shuffle the suit assignments with the ranks
+      const indices = [0, 1, 2, 3];
+      shuffleArray(indices);
+      for (let i = 0; i < 4; i++) {
+        const ri = RANKS.indexOf(ranks[indices[i]]);
+        const si = SUITS.indexOf(suitAssign[i]);
+        if (ri < 0 || si < 0) { valid = false; break; }
+        const ci = ri * 4 + si;
+        if (usedCards.has(ci)) { valid = false; break; }
+        hand.push(ci);
+      }
+    } else {
+      // Random suits, avoid duplicates
+      for (let i = 0; i < 4; i++) {
+        const ri = RANKS.indexOf(ranks[i]);
+        if (ri < 0) { valid = false; break; }
+        // Try random suits
+        const trySuits = shuffleArray(availSuits.slice());
+        let placed = false;
+        for (const s of trySuits) {
+          const ci = ri * 4 + SUITS.indexOf(s);
+          if (!usedCards.has(ci) && !hand.includes(ci)) {
+            hand.push(ci);
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) { valid = false; break; }
+      }
+    }
+
+    if (!valid || hand.length !== 4) continue;
+
+    // Check no duplicate card indices within the hand
+    const handSet = new Set(hand);
+    if (handSet.size !== 4) continue;
+
+    // Check none used
+    let conflict = false;
+    for (const c of hand) {
+      if (usedCards.has(c)) { conflict = true; break; }
+    }
+    if (conflict) continue;
+
+    return hand;
+  }
+
+  // Fallback: just pick 4 random cards from available
+  const available = [];
+  for (let i = 0; i < 52; i++) {
+    if (!usedCards.has(i)) available.push(i);
+  }
+  shuffleArray(available);
+  return available.slice(0, 4);
+}
+
+function generateRandomHoldemHand(usedCards) {
+  const available = [];
+  for (let i = 0; i < 52; i++) {
+    if (!usedCards.has(i)) available.push(i);
+  }
+  shuffleArray(available);
+  return available.slice(0, 2);
+}
+
+// ============================================================
+// AI Assistant
+// ============================================================
+let aiConversation = []; // {role, content} messages for Claude API
+let aiSending = false;
+
+const AI_SYSTEM_PROMPT = `You are an expert poker analyst embedded in cusPokerTools, a poker equity calculator. You help users analyze poker scenarios described in natural language.
+
+Your capabilities:
+1. Parse poker scenarios from natural language
+2. Identify: game type (holdem, omaha/PLO, double board PLO bomb pot), specific hands, board cards, number of opponents, opponent ranges
+3. Ask clarifying questions when information is missing (like card suits, board texture, number of opponents)
+4. When the user says "top X% of hands" in PLO, explain that this refers to premium starting hands and you will generate representative hands from that range tier
+5. Run equity calculations by outputting a special JSON command block
+
+IMPORTANT RULES:
+- When you have gathered enough information to run a calculation, output a calculation command in this exact format on its own line:
+  |||CALC|||{"gameType":"doubleBoard","hands":["AhAdKsKc"],"board1":"Kd7s5h","board2":"As2c3c","numOpponents":7,"oppRange":"top10"}|||END|||
+
+- gameType can be: "holdem", "omaha", or "doubleBoard"
+- hands: array of specific hand strings (e.g. "AhKs" for holdem, "AhAdKsKc" for PLO)
+- board1: board cards as string (for single board games, use "board1" only)
+- board2: second board (only for doubleBoard)
+- numOpponents: number of random opponent hands to generate
+- oppRange: "top5", "top10", "top20", "top30", or "random" (for opponent hand generation)
+- If board1 or board2 is not provided, leave it as "" (empty string) for preflop analysis
+
+- When suits are not specified by the user, offer to assign random ones. If they agree, pick reasonable ones (avoid giving the hero a monotone hand unless it makes sense; vary the suits).
+- For board texture: "rainbow" = all different suits, "two-tone" = exactly 2 cards of one suit, "monotone" = 3+ of one suit.
+- When generating random suits for boards, respect the texture the user described.
+
+- After the calculation runs, you will receive the results as a system message. Analyze them thoroughly:
+  - Explain which boards the hero is strong/weak on and why
+  - Discuss scoop potential
+  - Mention key draws or threats
+  - Be specific about hand strengths (e.g. "top set", "nut flush draw", "open-ended straight draw")
+  - Use markdown formatting: **bold** for emphasis, tables where helpful
+
+- Keep your tone knowledgeable but conversational, like a poker coach
+- Use standard poker terminology
+- Card notation: Rank (2-9, T, J, Q, K, A) + suit (h=hearts, d=diamonds, c=clubs, s=spades)
+- Always show the specific hands and boards you are using before running calculations
+
+FORMATTING:
+- Use **bold** for key results and hand names
+- Use markdown tables for results when appropriate
+- Use line breaks to keep messages readable
+- Keep analysis focused and actionable`;
+
+function getApiKey() {
+  return localStorage.getItem('cpt_claudeApiKey') || '';
+}
+
+function openSettingsModal() {
+  const modal = document.getElementById('settings-modal');
+  const input = document.getElementById('api-key-input');
+  input.value = getApiKey();
+  modal.classList.add('active');
+  setTimeout(() => input.focus(), 100);
+}
+
+function closeSettingsModal() {
+  document.getElementById('settings-modal').classList.remove('active');
+}
+
+function saveSettings() {
+  const key = document.getElementById('api-key-input').value.trim();
+  if (key) {
+    localStorage.setItem('cpt_claudeApiKey', key);
+  } else {
+    localStorage.removeItem('cpt_claudeApiKey');
+  }
+  closeSettingsModal();
+  appendSystemMessage('API key saved.');
+}
+
+function appendUserMessage(text) {
+  const area = document.getElementById('ai-chat-area');
+  const div = document.createElement('div');
+  div.className = 'ai-msg ai-msg-user';
+  div.textContent = text;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function appendAIMessage(html) {
+  const area = document.getElementById('ai-chat-area');
+  // Remove typing indicator if present
+  const typing = area.querySelector('.typing-indicator');
+  if (typing) typing.remove();
+
+  const div = document.createElement('div');
+  div.className = 'ai-msg ai-msg-ai';
+  div.innerHTML = html;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+  return div;
+}
+
+function appendSystemMessage(text) {
+  const area = document.getElementById('ai-chat-area');
+  const typing = area.querySelector('.typing-indicator');
+  if (typing) typing.remove();
+
+  const div = document.createElement('div');
+  div.className = 'ai-msg ai-msg-system';
+  div.textContent = text;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function showTypingIndicator() {
+  const area = document.getElementById('ai-chat-area');
+  const div = document.createElement('div');
+  div.className = 'typing-indicator';
+  div.innerHTML = '<span></span><span></span><span></span>';
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function removeTypingIndicator() {
+  const area = document.getElementById('ai-chat-area');
+  const typing = area.querySelector('.typing-indicator');
+  if (typing) typing.remove();
+}
+
+function aiInputKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    aiSend();
+  }
+}
+
+async function aiSend() {
+  if (aiSending) return;
+  const input = document.getElementById('ai-input');
+  const text = input.value.trim();
+  if (!text) return;
+
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    appendSystemMessage('No API key set. Click the gear icon to add your Claude API key.');
+    return;
+  }
+
+  input.value = '';
+  input.style.height = 'auto';
+  appendUserMessage(text);
+
+  aiConversation.push({ role: 'user', content: text });
+
+  await callClaude();
+}
+
+async function callClaude() {
+  const apiKey = getApiKey();
+  aiSending = true;
+  document.getElementById('ai-send-btn').disabled = true;
+  showTypingIndicator();
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5-20250929',
+        max_tokens: 4096,
+        system: AI_SYSTEM_PROMPT,
+        messages: aiConversation
+      })
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      const errMsg = errData.error?.message || response.statusText || 'Unknown error';
+      removeTypingIndicator();
+      appendSystemMessage('API Error (' + response.status + '): ' + errMsg);
+      aiSending = false;
+      document.getElementById('ai-send-btn').disabled = false;
+      return;
+    }
+
+    const data = await response.json();
+    const assistantText = data.content.map(b => b.text).join('');
+
+    aiConversation.push({ role: 'assistant', content: assistantText });
+
+    // Check if the response contains a |||CALC||| block
+    const calcMatch = assistantText.match(/\|\|\|CALC\|\|\|([\s\S]*?)\|\|\|END\|\|\|/);
+
+    if (calcMatch) {
+      // Show the text before the calc block
+      const beforeCalc = assistantText.split('|||CALC|||')[0].trim();
+      if (beforeCalc) {
+        appendAIMessage(renderMarkdown(beforeCalc));
+      }
+
+      // Parse and run the calculation
+      appendSystemMessage('Running equity calculation...');
+
+      try {
+        const calcJson = JSON.parse(calcMatch[1].trim());
+        const calcResults = await runAICalculation(calcJson);
+
+        // Send results back to Claude for analysis
+        const resultsMsg = formatCalcResultsForClaude(calcJson, calcResults);
+        aiConversation.push({ role: 'user', content: resultsMsg });
+
+        // Show a formatted results table
+        appendAIMessage(renderCalcResultsHTML(calcJson, calcResults));
+
+        // Call Claude again for analysis
+        showTypingIndicator();
+        const analysisResponse = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true'
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-5-20250929',
+            max_tokens: 4096,
+            system: AI_SYSTEM_PROMPT,
+            messages: aiConversation
+          })
+        });
+
+        if (analysisResponse.ok) {
+          const analysisData = await analysisResponse.json();
+          const analysisText = analysisData.content.map(b => b.text).join('');
+          aiConversation.push({ role: 'assistant', content: analysisText });
+          appendAIMessage(renderMarkdown(analysisText));
+        }
+
+        // Save to history
+        saveToHistory(
+          aiConversation.find(m => m.role === 'user')?.content || '',
+          calcJson,
+          calcResults,
+          aiConversation[aiConversation.length - 1]?.content || ''
+        );
+
+      } catch (calcErr) {
+        removeTypingIndicator();
+        appendSystemMessage('Calculation error: ' + calcErr.message);
+      }
+    } else {
+      // Normal text response (no calculation)
+      appendAIMessage(renderMarkdown(assistantText));
+    }
+
+  } catch (err) {
+    removeTypingIndicator();
+    appendSystemMessage('Error: ' + err.message);
+  }
+
+  aiSending = false;
+  document.getElementById('ai-send-btn').disabled = false;
+}
+
+// ============================================================
+// Run calculation from AI JSON command
+// ============================================================
+async function runAICalculation(calc) {
+  const usedCards = new Set();
+  const heroHands = [];
+
+  // Parse hero hand(s)
+  for (const h of calc.hands) {
+    const cards = parseCards(h);
+    heroHands.push(cards);
+    cards.forEach(c => usedCards.add(c));
+  }
+
+  // Parse boards
+  let board1 = [];
+  let board2 = [];
+  if (calc.board1) {
+    board1 = parseCards(calc.board1);
+    board1.forEach(c => usedCards.add(c));
+  }
+  if (calc.board2) {
+    board2 = parseCards(calc.board2);
+    board2.forEach(c => usedCards.add(c));
+  }
+
+  // Generate opponent hands
+  const numOpp = calc.numOpponents || 1;
+  const oppRange = calc.oppRange || 'random';
+  const oppHands = [];
+  const pctMap = { top5: 5, top10: 10, top20: 20, top30: 30, random: 100 };
+  const pctile = pctMap[oppRange] || 100;
+
+  const gameType = calc.gameType || 'omaha';
+  const isHoldem = gameType === 'holdem';
+
+  for (let i = 0; i < numOpp; i++) {
+    let hand;
+    if (isHoldem) {
+      hand = generateRandomHoldemHand(usedCards);
+    } else {
+      if (pctile <= 30) {
+        hand = generateRandomPLOHand(usedCards, pctile);
+      } else {
+        // Random: just pick 4 random cards
+        const avail = [];
+        for (let ci = 0; ci < 52; ci++) {
+          if (!usedCards.has(ci)) avail.push(ci);
+        }
+        shuffleArray(avail);
+        hand = avail.slice(0, 4);
+      }
+    }
+    hand.forEach(c => usedCards.add(c));
+    oppHands.push(hand);
+  }
+
+  const allHands = heroHands.concat(oppHands);
+
+  // Build remaining deck
+  const allUsed = new Set();
+  allHands.forEach(h => h.forEach(c => allUsed.add(c)));
+  board1.forEach(c => allUsed.add(c));
+  board2.forEach(c => allUsed.add(c));
+  const remaining = [];
+  for (let i = 0; i < 52; i++) {
+    if (!allUsed.has(i)) remaining.push(i);
+  }
+
+  // Run simulation
+  let results;
+  if (gameType === 'doubleBoard') {
+    results = simulateDoubleBoard(allHands, board1, board2, remaining);
+  } else if (gameType === 'holdem') {
+    results = simulateHoldem(allHands, board1, remaining);
+  } else {
+    results = simulateOmaha(allHands, board1, remaining);
+  }
+
+  results.allHands = allHands;
+  results.board1 = board1;
+  results.board2 = board2;
+  results.heroCount = heroHands.length;
+  results.gameType = gameType;
+
+  return results;
+}
+
+function formatCalcResultsForClaude(calc, results) {
+  let msg = '[CALCULATION RESULTS - Do NOT output another |||CALC||| block. Analyze these results for the user.]\n\n';
+  msg += 'Game Type: ' + results.gameType + '\n';
+  msg += 'Trials: ' + results.trials.toLocaleString() + ' (' + (results.exhaustive ? 'exhaustive' : 'Monte Carlo') + ')\n';
+
+  if (results.board1.length > 0) msg += 'Board 1: ' + cardsToStr(results.board1) + '\n';
+  if (results.board2.length > 0) msg += 'Board 2: ' + cardsToStr(results.board2) + '\n';
+  msg += '\n';
+
+  for (let i = 0; i < results.allHands.length; i++) {
+    const label = i < results.heroCount ? 'Hero' + (results.heroCount > 1 ? ' ' + (i+1) : '') : 'Opponent ' + (i - results.heroCount + 1);
+    const handStr = cardsToStr(results.allHands[i]);
+
+    if (results.gameType === 'doubleBoard') {
+      msg += label + ' (' + handStr + '): Overall=' + (results.overallEquity[i] * 100).toFixed(2) + '%, ';
+      msg += 'Board1=' + (results.board1Equity[i] * 100).toFixed(2) + '%, ';
+      msg += 'Board2=' + (results.board2Equity[i] * 100).toFixed(2) + '%, ';
+      msg += 'Scoop=' + (results.scoopPct[i] * 100).toFixed(2) + '%\n';
+    } else {
+      msg += label + ' (' + handStr + '): Equity=' + (results.equity[i] * 100).toFixed(2) + '%';
+      msg += ', Win=' + (results.wins[i] / results.trials * 100).toFixed(2) + '%';
+      msg += ', Tie=' + (results.ties[i] / results.trials * 100).toFixed(2) + '%\n';
+    }
+  }
+
+  return msg;
+}
+
+function renderCalcResultsHTML(calc, results) {
+  let html = '<strong>Calculation Results</strong><br>';
+  html += '<span style="font-size:11px;color:#888;">' + results.trials.toLocaleString() + ' trials (' + (results.exhaustive ? 'exhaustive' : 'Monte Carlo') + ')</span><br><br>';
+
+  if (results.board1.length > 0) html += 'Board 1: <strong>' + cardsToStr(results.board1) + '</strong><br>';
+  if (results.board2.length > 0) html += 'Board 2: <strong>' + cardsToStr(results.board2) + '</strong><br>';
+  html += '<br>';
+
+  if (results.gameType === 'doubleBoard') {
+    html += '<table><tr><th>Hand</th><th>Overall</th><th>Board 1</th><th>Board 2</th><th>Scoop%</th></tr>';
+    for (let i = 0; i < results.allHands.length; i++) {
+      const label = i < results.heroCount ? '<strong>Hero' + (results.heroCount > 1 ? ' ' + (i+1) : '') + '</strong>' : 'Opp ' + (i - results.heroCount + 1);
+      html += '<tr>';
+      html += '<td>' + label + ' <span style="font-family:monospace;font-size:11px;">' + cardsToStr(results.allHands[i]) + '</span></td>';
+      html += '<td><strong>' + (results.overallEquity[i] * 100).toFixed(1) + '%</strong></td>';
+      html += '<td>' + (results.board1Equity[i] * 100).toFixed(1) + '%</td>';
+      html += '<td>' + (results.board2Equity[i] * 100).toFixed(1) + '%</td>';
+      html += '<td>' + (results.scoopPct[i] * 100).toFixed(1) + '%</td>';
+      html += '</tr>';
+    }
+    html += '</table>';
+  } else {
+    html += '<table><tr><th>Hand</th><th>Equity</th><th>Win%</th><th>Tie%</th></tr>';
+    for (let i = 0; i < results.allHands.length; i++) {
+      const label = i < results.heroCount ? '<strong>Hero' + (results.heroCount > 1 ? ' ' + (i+1) : '') + '</strong>' : 'Opp ' + (i - results.heroCount + 1);
+      html += '<tr>';
+      html += '<td>' + label + ' <span style="font-family:monospace;font-size:11px;">' + cardsToStr(results.allHands[i]) + '</span></td>';
+      html += '<td><strong>' + (results.equity[i] * 100).toFixed(1) + '%</strong></td>';
+      html += '<td>' + (results.wins[i] / results.trials * 100).toFixed(1) + '%</td>';
+      html += '<td>' + (results.ties[i] / results.trials * 100).toFixed(1) + '%</td>';
+      html += '</tr>';
+    }
+    html += '</table>';
+  }
+
+  return html;
+}
+
+// ============================================================
+// Markdown Renderer (simple)
+// ============================================================
+function renderMarkdown(text) {
+  // Escape HTML
+  let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // Markdown tables
+  html = renderMarkdownTables(html);
+
+  // Headers
+  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+  // Bold
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // Italic
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Horizontal rule
+  html = html.replace(/^---$/gm, '<hr>');
+  // Unordered lists
+  html = html.replace(/^[*-] (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+  // Ordered lists
+  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+
+  // Line breaks (but not inside block elements)
+  html = html.replace(/\n/g, '<br>');
+  // Clean up extra <br> after block elements
+  html = html.replace(/<\/(h[1-4]|table|ul|ol|hr)><br>/g, '</$1>');
+  html = html.replace(/<br><(h[1-4]|table|ul|ol|hr)/g, '<$1');
+
+  return html;
+}
+
+function renderMarkdownTables(text) {
+  const lines = text.split('\n');
+  let result = [];
+  let inTable = false;
+  let tableRows = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line.startsWith('|') && line.endsWith('|')) {
+      // Check if it's a separator row
+      if (/^\|[\s\-:|]+\|$/.test(line)) {
+        continue; // skip separator
+      }
+      if (!inTable) {
+        inTable = true;
+        tableRows = [];
+      }
+      const cells = line.split('|').filter((_, idx, arr) => idx > 0 && idx < arr.length - 1).map(c => c.trim());
+      tableRows.push(cells);
+    } else {
+      if (inTable) {
+        result.push(buildTable(tableRows));
+        inTable = false;
+        tableRows = [];
+      }
+      result.push(lines[i]);
+    }
+  }
+  if (inTable) {
+    result.push(buildTable(tableRows));
+  }
+  return result.join('\n');
+}
+
+function buildTable(rows) {
+  if (rows.length === 0) return '';
+  let html = '<table>';
+  // First row is header
+  html += '<tr>';
+  for (const cell of rows[0]) {
+    html += '<th>' + cell + '</th>';
+  }
+  html += '</tr>';
+  for (let i = 1; i < rows.length; i++) {
+    html += '<tr>';
+    for (const cell of rows[i]) {
+      html += '<td>' + cell + '</td>';
+    }
+    html += '</tr>';
+  }
+  html += '</table>';
+  return html;
+}
+
+// ============================================================
+// History
+// ============================================================
+function getHistory() {
+  try {
+    return JSON.parse(localStorage.getItem('cpt_history') || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function saveToHistory(query, calcJson, results, analysis) {
+  const history = getHistory();
+  const entry = {
+    timestamp: new Date().toISOString(),
+    query: query.substring(0, 200),
+    hands: results.allHands ? results.allHands.map(h => cardsToStr(h)) : [],
+    board1: results.board1 ? cardsToStr(results.board1) : '',
+    board2: results.board2 ? cardsToStr(results.board2) : '',
+    gameType: results.gameType || calcJson.gameType,
+    results: {
+      trials: results.trials,
+      exhaustive: results.exhaustive,
+      overallEquity: results.overallEquity,
+      board1Equity: results.board1Equity,
+      board2Equity: results.board2Equity,
+      scoopPct: results.scoopPct,
+      equity: results.equity,
+      wins: results.wins,
+      ties: results.ties
+    },
+    analysis: analysis.substring(0, 2000)
+  };
+  history.unshift(entry);
+  // Keep last 10
+  if (history.length > 10) history.length = 10;
+  localStorage.setItem('cpt_history', JSON.stringify(history));
+  renderHistory();
+}
+
+function renderHistory() {
+  const body = document.getElementById('ai-history-body');
+  if (!body) return;
+  const history = getHistory();
+  if (history.length === 0) {
+    body.innerHTML = '<div style="padding:12px;color:#888;font-size:12px;text-align:center;">No history yet</div>';
+    return;
+  }
+  let html = '';
+  history.forEach((entry, idx) => {
+    const date = new Date(entry.timestamp);
+    const timeStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    html += '<div class="ai-history-item" onclick="toggleHistoryDetail(' + idx + ')">';
+    html += '<div class="hist-time">' + timeStr + ' - ' + (entry.gameType || 'unknown') + '</div>';
+    html += '<div class="hist-query">' + escapeHtml(entry.query) + '</div>';
+    html += '</div>';
+    html += '<div class="ai-history-detail" id="hist-detail-' + idx + '">';
+    html += '<strong>Hands:</strong> ' + escapeHtml((entry.hands || []).join(' vs ')) + '<br>';
+    if (entry.board1) html += '<strong>Board 1:</strong> ' + escapeHtml(entry.board1) + '<br>';
+    if (entry.board2) html += '<strong>Board 2:</strong> ' + escapeHtml(entry.board2) + '<br>';
+    html += '<strong>Trials:</strong> ' + (entry.results?.trials || '?').toLocaleString() + '<br>';
+    html += '<hr style="margin:6px 0;">';
+    html += '<strong>Analysis:</strong><br>';
+    html += '<pre>' + escapeHtml(entry.analysis || '') + '</pre>';
+    html += '</div>';
+  });
+  body.innerHTML = html;
+}
+
+function toggleHistory() {
+  const body = document.getElementById('ai-history-body');
+  const icon = document.getElementById('history-toggle-icon');
+  if (body.style.display === 'none') {
+    body.style.display = 'block';
+    icon.innerHTML = '&#9650;';
+  } else {
+    body.style.display = 'none';
+    icon.innerHTML = '&#9660;';
+  }
+}
+
+function toggleHistoryDetail(idx) {
+  const detail = document.getElementById('hist-detail-' + idx);
+  if (detail) {
+    detail.style.display = detail.style.display === 'none' ? 'block' : 'none';
+  }
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Auto-resize textarea
+document.addEventListener('DOMContentLoaded', () => {
+  const textarea = document.getElementById('ai-input');
+  if (textarea) {
+    textarea.addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+    });
+  }
+  renderHistory();
+});
 
 </script>
 </body>
