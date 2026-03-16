@@ -2987,16 +2987,36 @@ function enumerateHoldemCombos(handTypes, blockedCards) {
  * Returns array of [c1, c2, c3, c4] arrays.
  */
 function enumeratePLORange(pattern, blockedCards, numSamples) {
-  numSamples = numSamples || 500;
   const blocked = blockedCards || new Set();
   pattern = pattern.trim().toUpperCase().replace(/10/g, 'T');
   const results = [];
 
-  // Handle percentage patterns
+  // Helper: enumerate all C(4,2) suit combos for a rank
+  function suitCombos(rankIdx) {
+    const combos = [];
+    for (let s1 = 0; s1 < 4; s1++)
+      for (let s2 = s1+1; s2 < 4; s2++) {
+        const c1 = rankIdx * 4 + s1, c2 = rankIdx * 4 + s2;
+        if (!blocked.has(c1) && !blocked.has(c2)) combos.push([c1, c2]);
+      }
+    return combos;
+  }
+
+  // Helper: enumerate all available cards for a rank
+  function availCards(rankIdx) {
+    const cards = [];
+    for (let s = 0; s < 4; s++) {
+      const c = rankIdx * 4 + s;
+      if (!blocked.has(c)) cards.push(c);
+    }
+    return cards;
+  }
+
+  // Handle percentage patterns (still Monte Carlo — too many combos for exhaustive)
   const pct = parsePercentage(pattern);
   if (pct) {
-    // Use existing PLO tier system
-    for (let i = 0; i < numSamples; i++) {
+    const ns = numSamples || 500;
+    for (let i = 0; i < ns; i++) {
       const hand = generateRangedPLOHand(blocked, pct.hi, 'top');
       if (hand && hand.length === 4) {
         let conflict = false;
@@ -3007,75 +3027,141 @@ function enumeratePLORange(pattern, blockedCards, numSamples) {
     return deduplicatePLOHands(results);
   }
 
-  // Parse pattern parts
   const parts = pattern.split(',').map(p => p.trim()).filter(p => p);
 
   for (const part of parts) {
-    // Detect what ranks are required
-    const requiredPairs = [];
-    const requiredRanks = [];
 
-    // "AA" → require at least 2 aces
-    const pairMatch = part.match(/^([AKQJT2-9])\1$/);
-    if (pairMatch) {
-      requiredPairs.push(RANK_TO_VAL[pairMatch[1]]);
+    // ── RROO: Exhaustive two-pair enumeration ──
+    if (part === 'RROO' || part === 'RR00') {
+      // All C(13,2) rank pairs × C(4,2)² suit combos = 2808 hands
+      for (let r1 = 0; r1 < 13; r1++) {
+        for (let r2 = r1+1; r2 < 13; r2++) {
+          const sc1 = suitCombos(r1), sc2 = suitCombos(r2);
+          for (const s1 of sc1) {
+            for (const s2 of sc2) {
+              const hand = [...s1, ...s2];
+              if (new Set(hand).size === 4) results.push(hand);
+            }
+          }
+        }
+      }
+      continue;
     }
 
-    // "AAKK" → require AA and KK
+    // ── AARR: Aces + another pair ──
+    if (part === 'AARR') {
+      const aceRank = 12; // A = index 12
+      const aceSC = suitCombos(aceRank);
+      for (let r = 0; r < 12; r++) {
+        const pairSC = suitCombos(r);
+        for (const as of aceSC) {
+          for (const ps of pairSC) {
+            const hand = [...as, ...ps];
+            if (new Set(hand).size === 4) results.push(hand);
+          }
+        }
+      }
+      continue;
+    }
+
+    // ── Specific pair: "AA", "KK", etc — exhaustive (pair + all possible 2-card combos) ──
+    const pairMatch = part.match(/^([AKQJT2-9])\1$/);
+    if (pairMatch && !part.match(/^([AKQJT2-9])\1([AKQJT2-9])\2$/)) {
+      const pairRank = RANK_TO_VAL[pairMatch[1]] - 2; // convert to 0-12 index
+      const pairSC = suitCombos(pairRank);
+      // Get all available non-pair cards
+      const otherCards = [];
+      for (let i = 0; i < 52; i++) {
+        if (!blocked.has(i) && Math.floor(i/4) !== pairRank) otherCards.push(i);
+      }
+      for (const ps of pairSC) {
+        for (let i = 0; i < otherCards.length; i++) {
+          for (let j = i+1; j < otherCards.length; j++) {
+            const hand = [...ps, otherCards[i], otherCards[j]];
+            if (new Set(hand).size === 4) results.push(hand);
+          }
+        }
+      }
+      continue;
+    }
+
+    // ── Double pair: "AAKK" — exhaustive ──
     const doublePairMatch = part.match(/^([AKQJT2-9])\1([AKQJT2-9])\2$/);
     if (doublePairMatch) {
-      requiredPairs.push(RANK_TO_VAL[doublePairMatch[1]]);
-      requiredPairs.push(RANK_TO_VAL[doublePairMatch[2]]);
+      const r1 = RANK_TO_VAL[doublePairMatch[1]] - 2;
+      const r2 = RANK_TO_VAL[doublePairMatch[2]] - 2;
+      const sc1 = suitCombos(r1), sc2 = suitCombos(r2);
+      for (const s1 of sc1) {
+        for (const s2 of sc2) {
+          const hand = [...s1, ...s2];
+          if (new Set(hand).size === 4) results.push(hand);
+        }
+      }
+      continue;
     }
 
-    // "TT+" → pairs from TT to AA
+    // ── TT+ — exhaustive pairs from rank to aces ──
     const plusPairMatch = part.match(/^([AKQJT2-9])\1\+$/);
     if (plusPairMatch) {
-      const startVal = RANK_TO_VAL[plusPairMatch[1]];
-      for (let i = 0; i < numSamples; i++) {
-        const pairVal = startVal + Math.floor(Math.random() * (15 - startVal));
-        const hand = generatePLOHandWithPair(pairVal, blocked);
-        if (hand) results.push(hand);
+      const startRank = RANK_TO_VAL[plusPairMatch[1]] - 2;
+      for (let r = startRank; r < 13; r++) {
+        const pairSC = suitCombos(r);
+        const otherCards = [];
+        for (let i = 0; i < 52; i++) {
+          if (!blocked.has(i) && Math.floor(i/4) !== r) otherCards.push(i);
+        }
+        for (const ps of pairSC) {
+          // Sample other cards to keep count manageable
+          for (let n = 0; n < 50; n++) {
+            const shuffled = otherCards.slice(); shuffleArray(shuffled);
+            const hand = [...ps, shuffled[0], shuffled[1]];
+            if (new Set(hand).size === 4) results.push(hand);
+          }
+        }
       }
-      continue;
+      return deduplicatePLOHands(results);
     }
 
-    // "TT-77" → pair range
+    // ── TT-77 — exhaustive pair range ──
     const pairRangeMatch = part.match(/^([AKQJT2-9])\1-([AKQJT2-9])\2$/);
     if (pairRangeMatch) {
-      const v1 = RANK_TO_VAL[pairRangeMatch[1]];
-      const v2 = RANK_TO_VAL[pairRangeMatch[2]];
+      const v1 = RANK_TO_VAL[pairRangeMatch[1]] - 2;
+      const v2 = RANK_TO_VAL[pairRangeMatch[2]] - 2;
       const hi = Math.max(v1, v2), lo = Math.min(v1, v2);
-      for (let i = 0; i < numSamples; i++) {
-        const pairVal = lo + Math.floor(Math.random() * (hi - lo + 1));
-        const hand = generatePLOHandWithPair(pairVal, blocked);
-        if (hand) results.push(hand);
+      for (let r = lo; r <= hi; r++) {
+        const pairSC = suitCombos(r);
+        const otherCards = [];
+        for (let i = 0; i < 52; i++) {
+          if (!blocked.has(i) && Math.floor(i/4) !== r) otherCards.push(i);
+        }
+        for (const ps of pairSC) {
+          for (let n = 0; n < 50; n++) {
+            const shuffled = otherCards.slice(); shuffleArray(shuffled);
+            const hand = [...ps, shuffled[0], shuffled[1]];
+            if (new Set(hand).size === 4) results.push(hand);
+          }
+        }
       }
-      continue;
+      return deduplicatePLOHands(results);
     }
 
-    // Handle single pair case (most common for PLO: "AA", "KK")
-    if (requiredPairs.length === 1 && !doublePairMatch) {
-      for (let i = 0; i < numSamples; i++) {
-        const hand = generatePLOHandWithPair(requiredPairs[0], blocked);
-        if (hand) results.push(hand);
+    // ── Fallback: Monte Carlo for complex patterns ──
+    const ns = numSamples || 500;
+    if (part === '*') {
+      // Random hand
+      for (let i = 0; i < ns; i++) {
+        const avail = []; for (let c = 0; c < 52; c++) { if (!blocked.has(c)) avail.push(c); }
+        shuffleArray(avail);
+        results.push(avail.slice(0, 4));
       }
-      continue;
+      return deduplicatePLOHands(results);
     }
 
-    // Handle double pair case: "AAKK"
-    if (requiredPairs.length === 2) {
-      for (let i = 0; i < numSamples; i++) {
-        const hand = generatePLOHandWithTwoPairs(requiredPairs[0], requiredPairs[1], blocked);
-        if (hand) results.push(hand);
-      }
-      continue;
-    }
-
-    // Fallback: treat as generic PLO tier hand
-    for (let i = 0; i < numSamples; i++) {
-      const hand = generateRandomPLOHand(blocked, 30);
-      if (hand) results.push(hand);
+    // Generic fallback: random PLO hands
+    for (let i = 0; i < ns; i++) {
+      const avail = []; for (let c = 0; c < 52; c++) { if (!blocked.has(c)) avail.push(c); }
+      shuffleArray(avail);
+      results.push(avail.slice(0, 4));
     }
   }
 
