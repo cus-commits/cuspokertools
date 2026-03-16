@@ -47,10 +47,26 @@ select { font-family: Arial, sans-serif; cursor: pointer; }
 }
 .hand-row .mode-toggle:hover { background: #e0e0e0; }
 .hand-row .mode-toggle.range-active { background: #4a7c59; color: white; border-color: #4a7c59; }
-.range-controls { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 200px; }
-.range-controls select { width: auto; min-width: 70px; font-size: 12px; padding: 4px; }
-.range-controls input[type="range"] { flex: 1; accent-color: #4a7c59; cursor: pointer; }
-.range-controls .range-label { font-size: 12px; font-weight: bold; color: #4a7c59; min-width: 55px; text-align: center; }
+.range-controls { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 220px; }
+.range-slider-wrap { flex: 1; position: relative; height: 28px; }
+.range-slider-track { position: absolute; top: 12px; left: 0; right: 0; height: 4px; background: #ccc; border-radius: 2px; }
+.range-slider-fill { position: absolute; top: 12px; height: 4px; background: #4a7c59; border-radius: 2px; }
+.range-slider-wrap input[type="range"] {
+  position: absolute; top: 0; left: 0; width: 100%; height: 28px;
+  -webkit-appearance: none; appearance: none; background: transparent;
+  pointer-events: none; margin: 0; cursor: pointer;
+}
+.range-slider-wrap input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+  background: #4a7c59; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  pointer-events: all; cursor: grab; position: relative; z-index: 2;
+}
+.range-slider-wrap input[type="range"]::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #4a7c59; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  pointer-events: all; cursor: grab;
+}
+.range-controls .range-label { font-size: 11px; font-weight: bold; color: #4a7c59; min-width: 80px; text-align: center; line-height: 1.2; }
 .more-hands { color: #2a6e3f; cursor: pointer; font-size: 12px; text-decoration: underline; margin: 6px 0; display: inline-block; }
 .more-hands:hover { color: #1a5e2f; }
 
@@ -464,10 +480,12 @@ function addHandSlot() {
     '<button class="mode-toggle" id="mode-' + n + '" onclick="toggleHandMode(' + n + ')" title="Switch to Range mode">Range</button>' +
     '<button class="remove-btn" onclick="removeHand(' + n + ')" title="Remove">&times;</button>' +
     '<div class="range-controls" id="range-' + n + '" style="display:none;">' +
-      '<select id="range-dir-' + n + '" onchange="updateRangeLabel(' + n + ')">' +
-        '<option value="top">Top</option><option value="bottom">Bottom</option>' +
-      '</select>' +
-      '<input type="range" id="range-slider-' + n + '" min="1" max="100" value="20" oninput="updateRangeLabel(' + n + ')">' +
+      '<div class="range-slider-wrap">' +
+        '<div class="range-slider-track"></div>' +
+        '<div class="range-slider-fill" id="range-fill-' + n + '"></div>' +
+        '<input type="range" id="range-lo-' + n + '" min="0" max="100" value="0" oninput="updateDualRange(' + n + ')">' +
+        '<input type="range" id="range-hi-' + n + '" min="0" max="100" value="20" oninput="updateDualRange(' + n + ')">' +
+      '</div>' +
       '<span class="range-label" id="range-val-' + n + '">Top 20%</span>' +
     '</div>';
   container.appendChild(div);
@@ -483,7 +501,7 @@ function toggleHandMode(n) {
     inp.style.display = 'none';
     range.style.display = 'flex';
     inp.dataset.rangeMode = 'true';
-    updateRangeLabel(n);
+    updateDualRange(n);
   } else {
     btn.textContent = 'Range';
     inp.style.display = '';
@@ -491,19 +509,42 @@ function toggleHandMode(n) {
     inp.dataset.rangeMode = '';
   }
 }
-function updateRangeLabel(n) {
-  const dir = document.getElementById('range-dir-' + n)?.value || 'top';
-  const val = document.getElementById('range-slider-' + n)?.value || 20;
+function updateDualRange(n) {
+  const loEl = document.getElementById('range-lo-' + n);
+  const hiEl = document.getElementById('range-hi-' + n);
+  const fill = document.getElementById('range-fill-' + n);
   const label = document.getElementById('range-val-' + n);
-  if (label) label.textContent = (dir === 'top' ? 'Top ' : 'Bottom ') + val + '%';
+  if (!loEl || !hiEl) return;
+  let lo = parseInt(loEl.value);
+  let hi = parseInt(hiEl.value);
+  // Ensure lo <= hi
+  if (lo > hi) { if (this === loEl) hiEl.value = lo; else loEl.value = hi; lo = parseInt(loEl.value); hi = parseInt(hiEl.value); }
+  // Update fill bar position
+  if (fill) { fill.style.left = lo + '%'; fill.style.width = (hi - lo) + '%'; }
+  // Generate label
+  if (label) {
+    if (lo === 0 && hi <= 100) {
+      label.textContent = 'Top ' + hi + '%';
+    } else if (hi === 100 && lo >= 0) {
+      label.textContent = 'Bottom ' + (100 - lo) + '%';
+    } else {
+      label.textContent = lo + '%-' + hi + '%';
+    }
+  }
 }
 function getHandMode(n) {
   const inp = document.getElementById('hand-' + n);
   if (!inp) return null;
   if (inp.dataset.rangeMode === 'true') {
-    const dir = document.getElementById('range-dir-' + n)?.value || 'top';
-    const val = parseInt(document.getElementById('range-slider-' + n)?.value || '20');
-    return { mode: 'range', direction: dir, pct: val };
+    const lo = parseInt(document.getElementById('range-lo-' + n)?.value || '0');
+    const hi = parseInt(document.getElementById('range-hi-' + n)?.value || '20');
+    // Translate to direction + pct for the generator
+    // lo=0 → "top hi%", hi=100 → "bottom (100-lo)%", else middle range
+    let direction, pct;
+    if (lo === 0) { direction = 'top'; pct = hi; }
+    else if (hi === 100) { direction = 'bottom'; pct = 100 - lo; }
+    else { direction = 'top'; pct = hi; } // use hi as cutoff, lo as floor
+    return { mode: 'range', direction, pct, lo, hi };
   }
   return { mode: 'specific', value: inp.value };
 }
@@ -769,8 +810,15 @@ function runSimulation() {
         }
         hand.forEach(c => usedForRange.add(c));
         hands.push(hand);
-        const dirLabel = slot.direction === 'top' ? 'Top' : 'Btm';
-        handLabels.push(cardsToHTML(hand) + ' <span style="font-size:11px;color:#888;">(' + dirLabel + ' ' + slot.pct + '%)</span>');
+        let rangeDesc;
+        if (slot.lo !== undefined && slot.hi !== undefined) {
+          if (slot.lo === 0) rangeDesc = 'Top ' + slot.hi + '%';
+          else if (slot.hi === 100) rangeDesc = 'Btm ' + (100 - slot.lo) + '%';
+          else rangeDesc = slot.lo + '-' + slot.hi + '%';
+        } else {
+          rangeDesc = (slot.direction === 'top' ? 'Top ' : 'Btm ') + slot.pct + '%';
+        }
+        handLabels.push(cardsToHTML(hand) + ' <span style="font-size:11px;color:#888;">(' + rangeDesc + ')</span>');
       }
     }
 
