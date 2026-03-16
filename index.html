@@ -1291,6 +1291,51 @@ function runSimulation() {
         const allOppHands = rangeInfo.combos;
         const rangeDesc = rangeInfo.label;
 
+        // Try server for range calculation (much faster)
+        if (serverAvailable !== false) {
+          resultsArea.innerHTML = '<p class="loading">⏳ Running via engine server: ' + rangeDesc + ' (' + allOppHands.length + ' combos)...</p>';
+          const gt = gameType === 'doubleboard' ? 'doubleBoard' : gameType;
+          fetch(ENGINE_URL + '/range', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              gameType: gt,
+              heroHand: cardIndicesToStrings(heroHand),
+              oppHands: allOppHands.map(h => cardIndicesToStrings(h)),
+              board: cardIndicesToStrings(boardCards),
+              board1: cardIndicesToStrings(board1Cards),
+              board2: cardIndicesToStrings(board2Cards)
+            }),
+            signal: AbortSignal.timeout(60000)
+          }).then(r => r.json()).then(data => {
+            if (data.error) throw new Error(data.error);
+            const gn = { holdem: "Hold'em", omaha: 'Omaha (PLO4)', doubleboard: 'Double Board PLO' };
+            let html = '<h3>' + (gn[gameType] || gameType) + ' vs Range</h3>';
+            html += '<p>vs ' + rangeDesc + ' (' + allOppHands.length + ' combos) — <strong>' + data.time + 'ms</strong> via engine server</p>';
+            if (gameType === 'doubleboard') {
+              if (board1Cards.length > 0) html += '<p><strong>Board 1:</strong> ' + cardsToHTML(board1Cards) + '</p>';
+              if (board2Cards.length > 0) html += '<p><strong>Board 2:</strong> ' + cardsToHTML(board2Cards) + '</p>';
+              html += '<table class="results-table"><thead><tr><th>Hand</th><th>Overall</th><th>Board 1</th><th>Board 2</th></tr></thead><tbody>';
+              html += '<tr><td>Hero ' + cardsToHTML(heroHand) + '</td><td><strong>' + (data.heroEquity*100).toFixed(2) + '%</strong></td><td>' + (data.heroB1*100).toFixed(2) + '%</td><td>' + (data.heroB2*100).toFixed(2) + '%</td></tr>';
+              html += '<tr><td>' + rangeDesc + '</td><td><strong>' + (data.oppEquity*100).toFixed(2) + '%</strong></td><td>' + ((1-data.heroB1)*100).toFixed(2) + '%</td><td>' + ((1-data.heroB2)*100).toFixed(2) + '%</td></tr>';
+              html += '</tbody></table>';
+            } else {
+              if (boardCards.length > 0) html += '<p><strong>Board:</strong> ' + cardsToHTML(boardCards) + '</p>';
+              html += '<table class="results-table"><thead><tr><th>Hand</th><th>Equity</th></tr></thead><tbody>';
+              html += '<tr><td>Hero ' + cardsToHTML(heroHand) + '</td><td><strong>' + (data.heroEquity*100).toFixed(2) + '%</strong></td></tr>';
+              html += '<tr><td>' + rangeDesc + '</td><td><strong>' + (data.oppEquity*100).toFixed(2) + '%</strong></td></tr>';
+              html += '</tbody></table>';
+            }
+            resultsArea.innerHTML = html;
+          }).catch(() => {
+            // Server failed — fall back to JS engine below
+            serverAvailable = false;
+            runRangeViaJS();
+          });
+          return;
+        }
+
+        function runRangeViaJS() {
         // Cap combos for performance
         let combosToRun = allOppHands;
         if (allOppHands.length > 80) {
@@ -1375,6 +1420,8 @@ function runSimulation() {
           }
         }
         processRangeChunk();
+        } // end runRangeViaJS
+        runRangeViaJS();
         return; // Early return — PPT range mode handled
       }
 
@@ -1618,20 +1665,20 @@ function runSimulation() {
 
     resultsArea.innerHTML = '<p class="loading">Simulating...</p>';
 
-    // Use Web Worker for simulation to keep UI responsive
-    const workerMsg = { type: 'simulate', gameType: gameType, hands: hands, remaining: remaining };
-    if (gameType === 'holdem') {
-      workerMsg.board = boardCards;
-    } else if (gameType === 'omaha') {
-      workerMsg.board = boardCards;
-    } else {
-      workerMsg.board1 = board1Cards;
-      workerMsg.board2 = board2Cards;
-    }
-    simulateInWorker(workerMsg).then(results => {
+    // Try local engine server first, fall back to Web Worker
+    simulateViaServer(gameType, hands, boardCards, board1Cards, board2Cards).then(results => {
       displayResults(gameType, hands, handLabels, boardCards, board1Cards, board2Cards, results);
-    }).catch(e => {
-      resultsArea.innerHTML = '<p class="error-msg">Error: ' + e.message + '</p>';
+    }).catch(() => {
+      // Server unavailable — fall back to Web Worker
+      const workerMsg = { type: 'simulate', gameType: gameType, hands: hands, remaining: remaining };
+      if (gameType === 'holdem') { workerMsg.board = boardCards; }
+      else if (gameType === 'omaha') { workerMsg.board = boardCards; }
+      else { workerMsg.board1 = board1Cards; workerMsg.board2 = board2Cards; }
+      simulateInWorker(workerMsg).then(results => {
+        displayResults(gameType, hands, handLabels, boardCards, board1Cards, board2Cards, results);
+      }).catch(e => {
+        resultsArea.innerHTML = '<p class="error-msg">Error: ' + e.message + '</p>';
+      });
     });
 
   } catch (e) {
@@ -1942,6 +1989,77 @@ function getSimWorker() {
 }
 
 // Async wrapper that sends work to the Web Worker and returns a Promise
+// ============================================================
+// Local Engine Server (poker-odds-calc via Node.js)
+// ============================================================
+const ENGINE_URL = 'http://localhost:3847';
+let serverAvailable = null; // null = unknown, true/false = cached
+
+function cardIndicesToStrings(indices) {
+  return indices.map(i => {
+    const rank = RANKS[Math.floor(i / 4)];
+    const suit = SUITS[i % 4];
+    return rank + suit;
+  });
+}
+
+async function simulateViaServer(gameType, hands, boardCards, board1Cards, board2Cards) {
+  // Quick health check (cached after first call)
+  if (serverAvailable === false) throw new Error('Server offline');
+  if (serverAvailable === null) {
+    try {
+      const hc = await fetch(ENGINE_URL + '/health', { signal: AbortSignal.timeout(1000) });
+      serverAvailable = hc.ok;
+      if (!serverAvailable) throw new Error('Server offline');
+    } catch(e) { serverAvailable = false; throw e; }
+  }
+
+  const body = {
+    gameType: gameType === 'doubleboard' ? 'doubleBoard' : gameType,
+    hands: hands.map(h => cardIndicesToStrings(h)),
+  };
+  if (gameType === 'doubleboard') {
+    body.board1 = cardIndicesToStrings(board1Cards);
+    body.board2 = cardIndicesToStrings(board2Cards);
+  } else {
+    body.board = cardIndicesToStrings(boardCards);
+  }
+
+  const resp = await fetch(ENGINE_URL + '/equity', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30000)
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ error: 'Server error' }));
+    throw new Error(err.error || 'Server error');
+  }
+
+  const data = await resp.json();
+
+  // Convert server response to match our internal format
+  if (gameType === 'doubleboard') {
+    return {
+      trials: 1, exhaustive: true,
+      overallEquity: data.players.map(p => p.overallEquity),
+      board1Equity: data.players.map(p => p.board1Equity),
+      board2Equity: data.players.map(p => p.board2Equity),
+      scoopPct: data.players.map(p => p.scoop || 0),
+      time: data.time
+    };
+  } else {
+    return {
+      trials: 1, exhaustive: true,
+      equity: data.players.map(p => p.win + p.tie),
+      wins: data.players.map(p => Math.round(p.win * 1000)),
+      ties: data.players.map(p => Math.round(p.tie * 1000)),
+      time: data.time
+    };
+  }
+}
+
 function simulateInWorker(msg) {
   return new Promise((resolve, reject) => {
     const worker = getSimWorker();
