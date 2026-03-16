@@ -1091,31 +1091,159 @@ function runSimulation() {
     });
 
     // Process specific hands first (so ranges know what's taken)
+    // Also detect PPT range syntax in "specific" mode text inputs
+    const pptRangeSlots = []; // slots with PPT range patterns (text input)
     for (const slot of handSlots) {
       if (slot.mode === 'specific') {
-        const cards = parseCards(slot.value);
-        if (cards.length > 0) {
-          const expectedLen = gameType === 'holdem' ? 2 : 4;
-          if (cards.length !== expectedLen) {
-            throw new Error('Hand ' + slot.id + ': expected ' + expectedLen + ' cards, got ' + cards.length);
+        if (!slot.value || !slot.value.trim()) continue;
+        const inputType = detectInputType(slot.value);
+        if (inputType === 'specific') {
+          const cards = parseCards(slot.value);
+          if (cards.length > 0) {
+            const expectedLen = gameType === 'holdem' ? 2 : 4;
+            if (cards.length !== expectedLen) {
+              throw new Error('Hand ' + slot.id + ': expected ' + expectedLen + ' cards, got ' + cards.length);
+            }
+            hands.push(cards);
+            handLabels.push(cardsToHTML(cards));
+            cards.forEach(c => usedForRange.add(c));
           }
-          hands.push(cards);
-          handLabels.push(cardsToHTML(cards));
-          cards.forEach(c => usedForRange.add(c));
+        } else if (inputType === 'range' || inputType === 'percentage') {
+          // This is a PPT range pattern typed into the text input
+          pptRangeSlots.push({ id: slot.id, pattern: slot.value.trim() });
         }
       }
     }
 
-    // Check for range slots — these require iterating over the ENTIRE range
-    const rangeSlots = handSlots.filter(s => s.mode === 'range');
+    // Check for slider range slots AND PPT range text slots
+    const sliderRangeSlots = handSlots.filter(s => s.mode === 'range');
+    const totalRangeSlots = sliderRangeSlots.length + pptRangeSlots.length;
 
-    if (rangeSlots.length > 0 && gameType === 'holdem') {
+    // ── PPT RANGE MODE (text input with range syntax) ──
+    if (pptRangeSlots.length > 0) {
+      // For Hold'em: exhaustive enumeration of range combos
+      // For PLO: Monte Carlo sampling
+      if (hands.length < 1 && sliderRangeSlots.length === 0) {
+        // All inputs are ranges — run range vs range not supported, need at least 1 specific hand
+        throw new Error('Need at least 1 specific hand. Enter exact cards for at least one hand slot.');
+      }
+
+      // Collect all blocked cards
+      const blocked = new Set([...usedForRange, ...boardCards, ...board1Cards, ...board2Cards, ...deadCards]);
+
+      // Enumerate all combos for each PPT range slot
+      const rangeInfos = [];
+      for (const rs of pptRangeSlots) {
+        const combos = enumerateRange(rs.pattern, gameType, blocked);
+        if (combos.length === 0) throw new Error('No valid hands in range "' + rs.pattern + '"');
+        rangeInfos.push({ pattern: rs.pattern, combos: combos, label: rangeToLabel(rs.pattern) });
+      }
+
+      // If we have 1 hero + 1 PPT range → run hero vs each combo in range
+      if (hands.length === 1 && rangeInfos.length === 1 && sliderRangeSlots.length === 0) {
+        const heroHand = hands[0];
+        const rangeInfo = rangeInfos[0];
+        const allOppHands = rangeInfo.combos;
+        const rangeDesc = rangeInfo.label;
+
+        // Cap combos for performance
+        let combosToRun = allOppHands;
+        if (allOppHands.length > 80) {
+          shuffleArray(allOppHands);
+          combosToRun = allOppHands.slice(0, 80);
+        }
+
+        resultsArea.innerHTML = '<p class="loading">Running vs ' + rangeDesc + ' (' + combosToRun.length + (combosToRun.length < allOppHands.length ? ' of ' + allOppHands.length : '') + ' combos)...</p>';
+
+        setTimeout(() => {
+          try {
+            let totalHeroEq = 0, totalOppEq = 0, totalTrials = 0;
+            const isDB = gameType === 'doubleboard';
+            const isOmaha = gameType === 'omaha' || isDB;
+
+            if (isDB) {
+              let heroOverall = 0, oppOverall = 0;
+              let heroB1 = 0, oppB1 = 0, heroB2 = 0, oppB2 = 0;
+              let heroScoop = 0, oppScoop = 0;
+              for (const oppHand of combosToRun) {
+                const matchHands = [heroHand, oppHand];
+                const allUsedInner = new Set([...heroHand, ...oppHand, ...board1Cards, ...board2Cards, ...deadCards]);
+                const rem = []; for (let i = 0; i < 52; i++) { if (!allUsedInner.has(i)) rem.push(i); }
+                const r = simulateDoubleBoard(matchHands, board1Cards, board2Cards, rem);
+                heroOverall += r.overallEquity[0]; oppOverall += r.overallEquity[1];
+                heroB1 += r.board1Equity[0]; oppB1 += r.board1Equity[1];
+                heroB2 += r.board2Equity[0]; oppB2 += r.board2Equity[1];
+                heroScoop += r.scoopPct[0]; oppScoop += r.scoopPct[1];
+                totalTrials += r.trials;
+              }
+              const n = allOppHands.length;
+              let html = '<h3>Double Board PLO vs Range</h3>';
+              html += '<p>vs ' + rangeDesc + ' (' + n + ' combos)</p>';
+              if (board1Cards.length > 0) html += '<p><strong>Board 1:</strong> ' + cardsToHTML(board1Cards) + '</p>';
+              if (board2Cards.length > 0) html += '<p><strong>Board 2:</strong> ' + cardsToHTML(board2Cards) + '</p>';
+              html += '<table class="results-table"><thead><tr><th>Hand</th><th>Overall</th><th>Board 1</th><th>Board 2</th><th>Scoop%</th></tr></thead><tbody>';
+              html += '<tr><td>Hero ' + cardsToHTML(heroHand) + '</td>';
+              html += '<td><strong>' + (heroOverall/n*100).toFixed(2) + '%</strong></td>';
+              html += '<td>' + (heroB1/n*100).toFixed(2) + '%</td>';
+              html += '<td>' + (heroB2/n*100).toFixed(2) + '%</td>';
+              html += '<td>' + (heroScoop/n*100).toFixed(2) + '%</td></tr>';
+              html += '<tr><td>' + rangeDesc + ' (' + n + ' combos)</td>';
+              html += '<td><strong>' + (oppOverall/n*100).toFixed(2) + '%</strong></td>';
+              html += '<td>' + (oppB1/n*100).toFixed(2) + '%</td>';
+              html += '<td>' + (oppB2/n*100).toFixed(2) + '%</td>';
+              html += '<td>' + (oppScoop/n*100).toFixed(2) + '%</td></tr>';
+              html += '</tbody></table>';
+              resultsArea.innerHTML = html;
+            } else {
+              for (const oppHand of combosToRun) {
+                const matchHands = [heroHand, oppHand];
+                const bc = boardCards;
+                const allUsedInner = new Set([...heroHand, ...oppHand, ...bc, ...deadCards]);
+                const rem = []; for (let i = 0; i < 52; i++) { if (!allUsedInner.has(i)) rem.push(i); }
+                const r = isOmaha ? simulateOmaha(matchHands, bc, rem) : simulateHoldem(matchHands, bc, rem);
+                totalHeroEq += r.equity[0] * r.trials;
+                totalOppEq += r.equity[1] * r.trials;
+                totalTrials += r.trials;
+              }
+
+              const heroEq = (totalHeroEq / totalTrials * 100).toFixed(2);
+              const oppEq = (totalOppEq / totalTrials * 100).toFixed(2);
+
+              const gameNames = { holdem: "Hold'em", omaha: 'Omaha (PLO4)', doubleboard: 'Double Board PLO' };
+              let html = '<h3>' + gameNames[gameType] + ' vs Range</h3>';
+              html += '<p>vs ' + rangeDesc + ' (' + allOppHands.length + ' combos)</p>';
+              if (boardCards.length > 0) html += '<p><strong>Board:</strong> ' + cardsToHTML(boardCards) + '</p>';
+              html += '<table class="results-table"><thead><tr><th>Hand</th><th>Equity</th></tr></thead><tbody>';
+              html += '<tr><td>Hero ' + cardsToHTML(heroHand) + '</td><td><strong>' + heroEq + '%</strong></td></tr>';
+              html += '<tr><td>' + rangeDesc + ' (' + allOppHands.length + ' combos)</td><td><strong>' + oppEq + '%</strong></td></tr>';
+              html += '</tbody></table>';
+              html += '<p style="font-size:11px;color:#888;margin-top:8px;">' + allOppHands.length + ' specific combos after removing blocked cards.</p>';
+              resultsArea.innerHTML = html;
+            }
+          } catch (e) {
+            resultsArea.innerHTML = '<p class="error-msg">Error: ' + e.message + '</p>';
+          }
+        }, 50);
+        return; // Early return — PPT range mode handled
+      }
+
+      // Multiple ranges or multiple heroes: not fully supported yet, pick one random combo from each range
+      for (const ri of rangeInfos) {
+        const randomCombo = ri.combos[Math.floor(Math.random() * ri.combos.length)];
+        hands.push(randomCombo);
+        handLabels.push(cardsToHTML(randomCombo) + ' <span style="font-size:11px;color:#888;">(' + ri.label + ')</span>');
+        randomCombo.forEach(c => usedForRange.add(c));
+      }
+    }
+
+    // ── SLIDER RANGE MODE (existing percentage slider) ──
+    if (sliderRangeSlots.length > 0 && gameType === 'holdem' && pptRangeSlots.length === 0) {
       // RANGE MODE: Run hero vs every hand in the range, average equities
       if (hands.length !== 1) throw new Error('Range mode: enter exactly 1 specific hand, set opponent to Range');
-      if (rangeSlots.length !== 1) throw new Error('Range mode: only 1 range slot supported currently');
+      if (sliderRangeSlots.length !== 1) throw new Error('Range mode: only 1 range slot supported currently');
 
       const heroHand = hands[0];
-      const slot = rangeSlots[0];
+      const slot = sliderRangeSlots[0];
       const lo = slot.lo || 0;
       const hi = slot.hi || 20;
       let rangeDesc;
@@ -1176,8 +1304,8 @@ function runSimulation() {
             const rem = [];
             for (let i = 0; i < 52; i++) { if (!allUsed.has(i)) rem.push(i); }
             const r = simulateHoldem(matchHands, boardCards, rem);
-            totalHeroEq += r.equities[0] * r.trials;
-            totalOppEq += r.equities[1] * r.trials;
+            totalHeroEq += r.equity[0] * r.trials;
+            totalOppEq += r.equity[1] * r.trials;
             totalTrials += r.trials;
           }
 
@@ -1201,26 +1329,24 @@ function runSimulation() {
     }
 
     // Then generate range hands (single random for non-holdem — PLO range enumeration is too expensive)
-    for (const slot of handSlots) {
-      if (slot.mode === 'range') {
-        let hand;
-        if (gameType === 'holdem') {
-          hand = generateRangedHoldemHand(usedForRange, slot.pct, slot.direction);
-        } else {
-          hand = generateRangedPLOHand(usedForRange, slot.pct, slot.direction);
-        }
-        hand.forEach(c => usedForRange.add(c));
-        hands.push(hand);
-        let rangeDesc;
-        if (slot.lo !== undefined && slot.hi !== undefined) {
-          if (slot.lo === 0) rangeDesc = 'Top ' + slot.hi + '%';
-          else if (slot.hi === 100) rangeDesc = 'Btm ' + (100 - slot.lo) + '%';
-          else rangeDesc = slot.lo + '-' + slot.hi + '%';
-        } else {
-          rangeDesc = (slot.direction === 'top' ? 'Top ' : 'Btm ') + slot.pct + '%';
-        }
-        handLabels.push(cardsToHTML(hand) + ' <span style="font-size:11px;color:#888;">(' + rangeDesc + ')</span>');
+    for (const slot of sliderRangeSlots) {
+      let hand;
+      if (gameType === 'holdem') {
+        hand = generateRangedHoldemHand(usedForRange, slot.pct, slot.direction);
+      } else {
+        hand = generateRangedPLOHand(usedForRange, slot.pct, slot.direction);
       }
+      hand.forEach(c => usedForRange.add(c));
+      hands.push(hand);
+      let rangeDesc;
+      if (slot.lo !== undefined && slot.hi !== undefined) {
+        if (slot.lo === 0) rangeDesc = 'Top ' + slot.hi + '%';
+        else if (slot.hi === 100) rangeDesc = 'Btm ' + (100 - slot.lo) + '%';
+        else rangeDesc = slot.lo + '-' + slot.hi + '%';
+      } else {
+        rangeDesc = (slot.direction === 'top' ? 'Top ' : 'Btm ') + slot.pct + '%';
+      }
+      handLabels.push(cardsToHTML(hand) + ' <span style="font-size:11px;color:#888;">(' + rangeDesc + ')</span>');
     }
 
     if (hands.length < 2) throw new Error('Need at least 2 hands to simulate');
@@ -1868,6 +1994,522 @@ function generateRandomHoldemHand(usedCards) {
   return available.slice(0, 2);
 }
 
+// ============================================================
+// PPT Range Syntax Parser & Enumerator
+// ============================================================
+
+// Rank order for range expansions (high to low): A=14, K=13, ..., 2=2
+const RANK_ORDER = 'AKQJT98765432';
+const RANK_TO_VAL = {}; for (let i = 0; i < RANK_ORDER.length; i++) RANK_TO_VAL[RANK_ORDER[i]] = 14 - i;
+const VAL_TO_RANK = {}; for (const r in RANK_TO_VAL) VAL_TO_RANK[RANK_TO_VAL[r]] = r;
+
+/**
+ * Detect if an input string is a PPT range pattern vs specific cards.
+ * Returns 'specific' if it looks like exact cards (e.g., "AhKs"),
+ * 'range' if it looks like a PPT range pattern (e.g., "AA", "AKs", "TT+", "20%"),
+ * or 'percentage' if it's purely a percentage (e.g., "20%", "5%-10%").
+ */
+function detectInputType(input) {
+  if (!input || !input.trim()) return 'empty';
+  input = input.trim().toUpperCase().replace(/10/g, 'T');
+
+  // Check if it looks like specific cards: pairs of rank+suit
+  // e.g., "AhKs", "As Kh Qd Jc"
+  const specificPattern = /^([AKQJT2-9][HDCS]\s*)+$/i;
+  if (specificPattern.test(input.replace(/,/g, ' '))) {
+    return 'specific';
+  }
+
+  // Check if it's a percentage pattern: "20%", "5%-10%"
+  if (/^\d+%$/.test(input) || /^\d+%-\d+%$/.test(input) || /^\d+\s*%-\s*\d+\s*%$/.test(input)) {
+    return 'percentage';
+  }
+
+  // Check if it matches range syntax patterns
+  // Ranges contain rank letters but NOT suit letters adjacent to ranks in specific-card way
+  const rangePattern = /^[AKQJT2-9,\s%+\-$sod!:()@\[\]]+$/i;
+  if (rangePattern.test(input)) {
+    return 'range';
+  }
+
+  // Fallback: try to parse as specific cards
+  try {
+    parseCards(input);
+    return 'specific';
+  } catch(e) {
+    return 'range'; // If parsing as cards fails, assume range
+  }
+}
+
+/**
+ * Parse a percentage string like "20%" or "5%-10%".
+ * Returns {lo, hi} where lo/hi are 0-100.
+ */
+function parsePercentage(input) {
+  input = input.trim().replace(/\s/g, '');
+  const dashMatch = input.match(/^(\d+)%-(\d+)%$/);
+  if (dashMatch) {
+    return { lo: parseInt(dashMatch[1]), hi: parseInt(dashMatch[2]) };
+  }
+  const singleMatch = input.match(/^(\d+)%$/);
+  if (singleMatch) {
+    return { lo: 0, hi: parseInt(singleMatch[1]) };
+  }
+  return null;
+}
+
+/**
+ * Parse a PPT range pattern and return an array of hand type descriptors.
+ * Each descriptor: {rank1, rank2, type: 'pair'|'suited'|'offsuit'|'any'}
+ * rank1 >= rank2 (as values 2-14)
+ */
+function parseRangePattern(pattern, gameType) {
+  pattern = pattern.trim().toUpperCase().replace(/10/g, 'T');
+  const isHoldem = gameType === 'holdem';
+
+  // Split by comma (OR/union)
+  const parts = pattern.split(',').map(p => p.trim()).filter(p => p);
+  let allHandTypes = [];
+
+  for (const part of parts) {
+    const types = parseSingleRangePart(part, isHoldem);
+    allHandTypes = allHandTypes.concat(types);
+  }
+
+  // Deduplicate
+  const seen = new Set();
+  const unique = [];
+  for (const ht of allHandTypes) {
+    const key = ht.rank1 + '-' + ht.rank2 + '-' + ht.type;
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(ht);
+    }
+  }
+  return unique;
+}
+
+function parseSingleRangePart(part, isHoldem) {
+  // Handle percentage: "20%", "5%-10%"
+  const pct = parsePercentage(part);
+  if (pct) {
+    return getHandTypesFromPercentage(pct.lo, pct.hi, isHoldem);
+  }
+
+  // Handle "TT+" pattern (pair with + means this pair and all higher pairs)
+  const plusPairMatch = part.match(/^([AKQJT2-9])\1\+$/);
+  if (plusPairMatch) {
+    const startVal = RANK_TO_VAL[plusPairMatch[1]];
+    const result = [];
+    for (let v = startVal; v <= 14; v++) {
+      result.push({ rank1: v, rank2: v, type: 'pair' });
+    }
+    return result;
+  }
+
+  // Handle "AK+" pattern (non-pair with + means this hand and all higher second cards)
+  const plusNonPairMatch = part.match(/^([AKQJT2-9])([AKQJT2-9])\+$/);
+  if (plusNonPairMatch && plusNonPairMatch[1] !== plusNonPairMatch[2]) {
+    const v1 = RANK_TO_VAL[plusNonPairMatch[1]];
+    const v2 = RANK_TO_VAL[plusNonPairMatch[2]];
+    const hi = Math.max(v1, v2);
+    const lo = Math.min(v1, v2);
+    const result = [];
+    // + means go up from the lower card to one below the higher card
+    for (let v = lo; v < hi; v++) {
+      result.push({ rank1: hi, rank2: v, type: 'any' });
+    }
+    return result;
+  }
+
+  // Handle suited/offsuit + pattern: "AKs+", "AKo+"
+  const plusSuitedMatch = part.match(/^([AKQJT2-9])([AKQJT2-9])([\$]?[SO])\+$/);
+  if (plusSuitedMatch && plusSuitedMatch[1] !== plusSuitedMatch[2]) {
+    const v1 = RANK_TO_VAL[plusSuitedMatch[1]];
+    const v2 = RANK_TO_VAL[plusSuitedMatch[2]];
+    const hi = Math.max(v1, v2);
+    const lo = Math.min(v1, v2);
+    const suitType = plusSuitedMatch[3].replace('$', '').toUpperCase() === 'S' ? 'suited' : 'offsuit';
+    const result = [];
+    for (let v = lo; v < hi; v++) {
+      result.push({ rank1: hi, rank2: v, type: suitType });
+    }
+    return result;
+  }
+
+  // Handle pair range: "TT-77"
+  const pairRangeMatch = part.match(/^([AKQJT2-9])\1-([AKQJT2-9])\2$/);
+  if (pairRangeMatch) {
+    const v1 = RANK_TO_VAL[pairRangeMatch[1]];
+    const v2 = RANK_TO_VAL[pairRangeMatch[2]];
+    const hi = Math.max(v1, v2);
+    const lo = Math.min(v1, v2);
+    const result = [];
+    for (let v = lo; v <= hi; v++) {
+      result.push({ rank1: v, rank2: v, type: 'pair' });
+    }
+    return result;
+  }
+
+  // Handle non-pair range: "AKs-ATs", "AKo-ATo"
+  const nonPairRangeMatch = part.match(/^([AKQJT2-9])([AKQJT2-9])([\$]?[SO]?)-([AKQJT2-9])([AKQJT2-9])([\$]?[SO]?)$/);
+  if (nonPairRangeMatch) {
+    const hi1 = RANK_TO_VAL[nonPairRangeMatch[1]];
+    const lo1 = RANK_TO_VAL[nonPairRangeMatch[2]];
+    const hi2 = RANK_TO_VAL[nonPairRangeMatch[4]];
+    const lo2 = RANK_TO_VAL[nonPairRangeMatch[5]];
+    const suitStr = (nonPairRangeMatch[3] || nonPairRangeMatch[6] || '').replace('$', '').toUpperCase();
+    const suitType = suitStr === 'S' ? 'suited' : suitStr === 'O' ? 'offsuit' : 'any';
+
+    // Both should share the same high card
+    if (hi1 === hi2) {
+      const loLo = Math.min(lo1, lo2);
+      const loHi = Math.max(lo1, lo2);
+      const result = [];
+      for (let v = loLo; v <= loHi; v++) {
+        if (v !== hi1) {
+          result.push({ rank1: hi1, rank2: v, type: suitType });
+        }
+      }
+      return result;
+    }
+  }
+
+  // Handle single pair: "AA", "KK"
+  const pairMatch = part.match(/^([AKQJT2-9])\1$/);
+  if (pairMatch) {
+    const v = RANK_TO_VAL[pairMatch[1]];
+    return [{ rank1: v, rank2: v, type: 'pair' }];
+  }
+
+  // Handle suited: "AKs" or "AK$s"
+  const suitedMatch = part.match(/^([AKQJT2-9])([AKQJT2-9])[\$]?S$/);
+  if (suitedMatch && suitedMatch[1] !== suitedMatch[2]) {
+    const v1 = RANK_TO_VAL[suitedMatch[1]];
+    const v2 = RANK_TO_VAL[suitedMatch[2]];
+    return [{ rank1: Math.max(v1, v2), rank2: Math.min(v1, v2), type: 'suited' }];
+  }
+
+  // Handle offsuit: "AKo" or "AK$o"
+  const offsuitMatch = part.match(/^([AKQJT2-9])([AKQJT2-9])[\$]?O$/);
+  if (offsuitMatch && offsuitMatch[1] !== offsuitMatch[2]) {
+    const v1 = RANK_TO_VAL[offsuitMatch[1]];
+    const v2 = RANK_TO_VAL[offsuitMatch[2]];
+    return [{ rank1: Math.max(v1, v2), rank2: Math.min(v1, v2), type: 'offsuit' }];
+  }
+
+  // Handle bare two-rank: "AK" (all combos, both suited and offsuit)
+  const bareMatch = part.match(/^([AKQJT2-9])([AKQJT2-9])$/);
+  if (bareMatch && bareMatch[1] !== bareMatch[2]) {
+    const v1 = RANK_TO_VAL[bareMatch[1]];
+    const v2 = RANK_TO_VAL[bareMatch[2]];
+    return [{ rank1: Math.max(v1, v2), rank2: Math.min(v1, v2), type: 'any' }];
+  }
+
+  // Handle weighted: "AA@100" → just treat as the hand type, ignore weight for now
+  const weightedMatch = part.match(/^(.+)@\d+$/);
+  if (weightedMatch) {
+    return parseSingleRangePart(weightedMatch[1], isHoldem);
+  }
+
+  // Unknown pattern - return empty
+  return [];
+}
+
+/**
+ * Get hand types from HOLDEM_RANKINGS based on percentage range.
+ */
+function getHandTypesFromPercentage(lo, hi, isHoldem) {
+  if (isHoldem) {
+    const total = HOLDEM_RANKINGS.length;
+    const loIdx = Math.round(total * lo / 100);
+    const hiIdx = Math.round(total * hi / 100);
+    const slice = HOLDEM_RANKINGS.slice(loIdx, hiIdx);
+    return slice.map(([r1, r2, suited]) => ({
+      rank1: r1,
+      rank2: r2,
+      type: r1 === r2 ? 'pair' : (suited ? 'suited' : 'offsuit')
+    }));
+  }
+  // For PLO, return a percentage marker to be handled by Monte Carlo
+  return [{ percentage: true, lo, hi }];
+}
+
+/**
+ * Enumerate all specific Hold'em hand combos from a list of hand type descriptors.
+ * blockedCards: Set of card indices that cannot be used.
+ * Returns array of [card1, card2] arrays.
+ */
+function enumerateHoldemCombos(handTypes, blockedCards) {
+  const allCombos = [];
+  const blocked = blockedCards || new Set();
+
+  for (const ht of handTypes) {
+    // If this is a percentage marker, expand it
+    if (ht.percentage) {
+      const expanded = getHandTypesFromPercentage(ht.lo, ht.hi, true);
+      const sub = enumerateHoldemCombos(expanded, blockedCards);
+      allCombos.push(...sub);
+      continue;
+    }
+
+    const ri1 = ht.rank1 - 2; // index into RANKS (0-12)
+    const ri2 = ht.rank2 - 2;
+
+    if (ht.type === 'pair') {
+      // All C(4,2) = 6 combos
+      for (let s1 = 0; s1 < 4; s1++) {
+        for (let s2 = s1 + 1; s2 < 4; s2++) {
+          const c1 = ri1 * 4 + s1, c2 = ri2 * 4 + s2;
+          if (!blocked.has(c1) && !blocked.has(c2)) allCombos.push([c1, c2]);
+        }
+      }
+    } else if (ht.type === 'suited') {
+      // 4 suited combos
+      for (let s = 0; s < 4; s++) {
+        const c1 = ri1 * 4 + s, c2 = ri2 * 4 + s;
+        if (!blocked.has(c1) && !blocked.has(c2)) allCombos.push([c1, c2]);
+      }
+    } else if (ht.type === 'offsuit') {
+      // 12 offsuit combos
+      for (let s1 = 0; s1 < 4; s1++) {
+        for (let s2 = 0; s2 < 4; s2++) {
+          if (s1 === s2) continue;
+          const c1 = ri1 * 4 + s1, c2 = ri2 * 4 + s2;
+          if (!blocked.has(c1) && !blocked.has(c2)) allCombos.push([c1, c2]);
+        }
+      }
+    } else {
+      // 'any' = all 16 combos (suited + offsuit) for non-pairs
+      for (let s1 = 0; s1 < 4; s1++) {
+        for (let s2 = 0; s2 < 4; s2++) {
+          const c1 = ri1 * 4 + s1, c2 = ri2 * 4 + s2;
+          if (c1 === c2) continue; // can't be same card
+          if (!blocked.has(c1) && !blocked.has(c2)) allCombos.push([c1, c2]);
+        }
+      }
+    }
+  }
+
+  // Deduplicate (normalize order: lower index first)
+  const seen = new Set();
+  const unique = [];
+  for (const combo of allCombos) {
+    const key = Math.min(combo[0], combo[1]) + ',' + Math.max(combo[0], combo[1]);
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(combo);
+    }
+  }
+  return unique;
+}
+
+/**
+ * Enumerate PLO hands matching a pattern via Monte Carlo sampling.
+ * For PLO, full enumeration is too expensive, so we sample N random hands.
+ * pattern: the PPT pattern string
+ * blockedCards: Set of card indices that cannot be used
+ * numSamples: how many sample hands to generate (default 75)
+ * Returns array of [c1, c2, c3, c4] arrays.
+ */
+function enumeratePLORange(pattern, blockedCards, numSamples) {
+  numSamples = numSamples || 75;
+  const blocked = blockedCards || new Set();
+  pattern = pattern.trim().toUpperCase().replace(/10/g, 'T');
+  const results = [];
+
+  // Handle percentage patterns
+  const pct = parsePercentage(pattern);
+  if (pct) {
+    // Use existing PLO tier system
+    for (let i = 0; i < numSamples; i++) {
+      const hand = generateRangedPLOHand(blocked, pct.hi, 'top');
+      if (hand && hand.length === 4) {
+        let conflict = false;
+        for (const c of hand) { if (blocked.has(c)) { conflict = true; break; } }
+        if (!conflict) results.push(hand);
+      }
+    }
+    return deduplicatePLOHands(results);
+  }
+
+  // Parse pattern parts
+  const parts = pattern.split(',').map(p => p.trim()).filter(p => p);
+
+  for (const part of parts) {
+    // Detect what ranks are required
+    const requiredPairs = [];
+    const requiredRanks = [];
+
+    // "AA" → require at least 2 aces
+    const pairMatch = part.match(/^([AKQJT2-9])\1$/);
+    if (pairMatch) {
+      requiredPairs.push(RANK_TO_VAL[pairMatch[1]]);
+    }
+
+    // "AAKK" → require AA and KK
+    const doublePairMatch = part.match(/^([AKQJT2-9])\1([AKQJT2-9])\2$/);
+    if (doublePairMatch) {
+      requiredPairs.push(RANK_TO_VAL[doublePairMatch[1]]);
+      requiredPairs.push(RANK_TO_VAL[doublePairMatch[2]]);
+    }
+
+    // "TT+" → pairs from TT to AA
+    const plusPairMatch = part.match(/^([AKQJT2-9])\1\+$/);
+    if (plusPairMatch) {
+      const startVal = RANK_TO_VAL[plusPairMatch[1]];
+      for (let i = 0; i < numSamples; i++) {
+        const pairVal = startVal + Math.floor(Math.random() * (15 - startVal));
+        const hand = generatePLOHandWithPair(pairVal, blocked);
+        if (hand) results.push(hand);
+      }
+      continue;
+    }
+
+    // "TT-77" → pair range
+    const pairRangeMatch = part.match(/^([AKQJT2-9])\1-([AKQJT2-9])\2$/);
+    if (pairRangeMatch) {
+      const v1 = RANK_TO_VAL[pairRangeMatch[1]];
+      const v2 = RANK_TO_VAL[pairRangeMatch[2]];
+      const hi = Math.max(v1, v2), lo = Math.min(v1, v2);
+      for (let i = 0; i < numSamples; i++) {
+        const pairVal = lo + Math.floor(Math.random() * (hi - lo + 1));
+        const hand = generatePLOHandWithPair(pairVal, blocked);
+        if (hand) results.push(hand);
+      }
+      continue;
+    }
+
+    // Handle single pair case (most common for PLO: "AA", "KK")
+    if (requiredPairs.length === 1 && !doublePairMatch) {
+      for (let i = 0; i < numSamples; i++) {
+        const hand = generatePLOHandWithPair(requiredPairs[0], blocked);
+        if (hand) results.push(hand);
+      }
+      continue;
+    }
+
+    // Handle double pair case: "AAKK"
+    if (requiredPairs.length === 2) {
+      for (let i = 0; i < numSamples; i++) {
+        const hand = generatePLOHandWithTwoPairs(requiredPairs[0], requiredPairs[1], blocked);
+        if (hand) results.push(hand);
+      }
+      continue;
+    }
+
+    // Fallback: treat as generic PLO tier hand
+    for (let i = 0; i < numSamples; i++) {
+      const hand = generateRandomPLOHand(blocked, 30);
+      if (hand) results.push(hand);
+    }
+  }
+
+  return deduplicatePLOHands(results);
+}
+
+/**
+ * Generate a random PLO hand containing a pair of the given rank value.
+ */
+function generatePLOHandWithPair(pairVal, blocked) {
+  const ri = pairVal - 2; // index into RANKS
+  const suits = shuffleArray([0,1,2,3]);
+  const hand = [];
+
+  // Pick 2 suits for the pair
+  for (const s of suits) {
+    const ci = ri * 4 + s;
+    if (!blocked.has(ci) && hand.length < 2) hand.push(ci);
+  }
+  if (hand.length < 2) return null;
+
+  // Fill remaining 2 cards from available deck
+  const avail = [];
+  for (let i = 0; i < 52; i++) {
+    if (!blocked.has(i) && !hand.includes(i)) avail.push(i);
+  }
+  shuffleArray(avail);
+  while (hand.length < 4 && avail.length > 0) hand.push(avail.shift());
+  return hand.length === 4 ? hand : null;
+}
+
+/**
+ * Generate a random PLO hand containing two different pairs.
+ */
+function generatePLOHandWithTwoPairs(pairVal1, pairVal2, blocked) {
+  const ri1 = pairVal1 - 2, ri2 = pairVal2 - 2;
+  const hand = [];
+
+  // Pick suits for first pair
+  const suits1 = shuffleArray([0,1,2,3]);
+  for (const s of suits1) {
+    const ci = ri1 * 4 + s;
+    if (!blocked.has(ci) && hand.length < 2) hand.push(ci);
+  }
+  if (hand.length < 2) return null;
+
+  // Pick suits for second pair
+  const suits2 = shuffleArray([0,1,2,3]);
+  for (const s of suits2) {
+    const ci = ri2 * 4 + s;
+    if (!blocked.has(ci) && !hand.includes(ci) && hand.length < 4) hand.push(ci);
+  }
+  return hand.length === 4 ? hand : null;
+}
+
+function deduplicatePLOHands(hands) {
+  const seen = new Set();
+  const unique = [];
+  for (const hand of hands) {
+    const key = hand.slice().sort((a,b) => a-b).join(',');
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(hand);
+    }
+  }
+  return unique;
+}
+
+/**
+ * Master function: enumerate a range pattern into specific hand combos.
+ * gameType: 'holdem', 'omaha', or 'doubleboard'
+ * pattern: the PPT range string
+ * blockedCards: Set of card indices to exclude
+ * Returns array of hand arrays (each hand is array of card indices)
+ */
+function enumerateRange(pattern, gameType, blockedCards) {
+  const isHoldem = gameType === 'holdem';
+
+  if (isHoldem) {
+    // Check if it's a pure percentage first
+    const pct = parsePercentage(pattern);
+    if (pct) {
+      const handTypes = getHandTypesFromPercentage(pct.lo, pct.hi, true);
+      return enumerateHoldemCombos(handTypes, blockedCards);
+    }
+    // Parse as PPT range
+    const handTypes = parseRangePattern(pattern, gameType);
+    if (handTypes.length === 0) return [];
+    return enumerateHoldemCombos(handTypes, blockedCards);
+  } else {
+    // PLO / Double Board: use Monte Carlo sampling
+    return enumeratePLORange(pattern, blockedCards, 75);
+  }
+}
+
+/**
+ * Format a range pattern into a human-readable label.
+ */
+function rangeToLabel(pattern) {
+  pattern = pattern.trim();
+  const pct = parsePercentage(pattern);
+  if (pct) {
+    if (pct.lo === 0) return 'Top ' + pct.hi + '%';
+    return pct.lo + '%-' + pct.hi + '%';
+  }
+  return pattern.toUpperCase();
+}
+
 // Hold'em hand rankings (169 distinct hands ranked best to worst)
 // Each entry: [rank1, rank2, suited] where ranks are 2-14 (A=14)
 const HOLDEM_RANKINGS = (function() {
@@ -1989,24 +2631,32 @@ INFERENCE RULES (follow these strictly):
 4. SUITS: If user provides suits, use them. If not, SILENTLY assign reasonable random suits and tell the user what you picked. Do NOT ask "do you remember suits?" — just pick them and go.
 5. BOARD TEXTURE: If not specified, assign varied realistic suits. Don't ask.
 6. DEFAULT TO ACTION: When in doubt, run the calculation. You can always re-run with different parameters.
+7. RANGE SYNTAX: When user uses PPT range syntax like "AA", "AKs", "TT+", "20%", etc., pass it through oppRange. The calculator will enumerate all combos and compute exact equity against the entire range.
 
 CALCULATION COMMAND FORMAT:
 When ready (which should be IMMEDIATELY on most queries), output on its own line:
-|||CALC|||{"gameType":"holdem","hands":["AsKh"],"board1":"KsTs6h","board2":"","numOpponents":1,"oppRange":"top20"}|||END|||
+|||CALC|||{"gameType":"holdem","hands":["AsKh"],"board1":"KsTs6h","board2":"","numOpponents":0,"oppRange":"AA,KK"}|||END|||
 
 FIELDS:
 - gameType: "holdem", "omaha", or "doubleBoard" (INFER from card count)
-- hands: array of ALL specific hands. Hero FIRST. Include opponent hands if specified.
+- hands: array of ALL specific hands. Hero FIRST. Include opponent hands if specified with exact cards.
 - board1: board cards (use for single-board games too)
 - board2: second board (only for doubleBoard, else "")
-- numOpponents: ADDITIONAL random opponents beyond what's in hands array. If user gave both hands explicitly, this is 0.
-- oppRange: "top5", "top10", "top15", "top20", "top25", "top30", "top40", "top50", or "random"
+- numOpponents: ADDITIONAL random opponents beyond what's in hands array AND beyond oppRange. If user gave both hands explicitly, this is 0. If using oppRange, this is 0.
+- oppRange: PPT range syntax string OR legacy keywords. Can be:
+  * PPT syntax: "AA", "KK", "AKs", "AKo", "TT+", "TT-77", "AA,KK,QQ", "AKs-ATs", "20%", "5%-10%"
+  * Legacy keywords: "top5", "top10", "top15", "top20", "top25", "top30", "top40", "top50", "random"
+  * When user specifies a range, use PPT syntax (preferred) or legacy keyword. The calculator will enumerate ALL combos and average equities.
 
 EXAMPLES OF CORRECT INFERENCE:
-- "AsKh vs top 20% on KsTs6h" → holdem, hands:["AsKh"], board1:"KsTs6h", numOpponents:1, oppRange:"top20". RUN IT.
+- "AsKh vs top 20% on KsTs6h" → hands:["AsKh"], board1:"KsTs6h", numOpponents:0, oppRange:"20%". RUN IT.
+- "AsKh vs AA on Ks7d2h" → hands:["AsKh"], board1:"Ks7d2h", numOpponents:0, oppRange:"AA". RUN IT.
+- "AhKs vs TT+ preflop" → hands:["AhKs"], board1:"", numOpponents:0, oppRange:"TT+". RUN IT.
+- "pocket queens vs AK suited" → hands:["QhQs"], numOpponents:0, oppRange:"AKs". RUN IT.
 - "I had AAKK against 3 players on K75 A23 double board" → doubleBoard, 4 cards = PLO. Assign suits silently. numOpponents:3, oppRange:"random". RUN IT.
 - "AA vs KK preflop" → holdem (2 cards each). hands:["AhAs","KdKc"], board1:"", numOpponents:0. RUN IT.
-- "my AhAdKsKc vs top 10% on Kd7s5h" → omaha (4 cards). RUN IT.
+- "my AhAdKsKc vs top 10% on Kd7s5h" → omaha (4 cards), hands:["AhAdKsKc"], board1:"Kd7s5h", numOpponents:0, oppRange:"10%". RUN IT.
+- "AhKh vs AA,KK,QQ,AKs on 9h8h2d" → hands:["AhKh"], board1:"9h8h2d", numOpponents:0, oppRange:"AA,KK,QQ,AKs". RUN IT.
 
 AFTER RESULTS:
 - Analyze thoroughly: hand strength, draws, outs, threats
@@ -2015,13 +2665,47 @@ AFTER RESULTS:
 - Keep it concise and actionable — like a poker coach, not a textbook
 - Use **bold** for key findings, markdown tables for results
 
-PPT SYNTAX REFERENCE (understand when users use these):
-AA=aces, AxAyxy=double-suited aces, AA$ds=same, AA$ss=single-suited aces
-RROO=two pair, RRON=one pair, *$np=no pairs, *$nt=no trips, AA!AAA=exactly 2 aces
-15%=top 15%, 5%-10%=range, xx:15%=suited+top15%, 40%!RR=top40% no pairs
-TT-77=pair range, KQJT-T987=rundown range, $0g/$1g/$2g=gap rundowns
-$ds=double-suited, $ss=single-suited, $B=big[A-J], $M=mid[T-7], $Z=small[6-2]
-Comma=OR, Colon=AND, !=NOT, wxyz=suit variables
+PROPOKERTOOLS RANGE SYNTAX (you MUST understand and use these):
+
+BASICS:
+- Ranks: AKQJT98765432. Suits: shdc. Wildcards: *
+- Suit variables: wxyz (won't bind to explicit suits)
+- Rank variables: R, O, N (won't bind to explicit ranks)
+
+HOLD'EM EXAMPLES:
+- AA = pair of aces (all 6 combos). AA,KK = aces or kings (12 combos)
+- AK = ace-king all combos (16). AKs or AK$s = ace-king suited (4 combos). AKo or AK$o = offsuit (12 combos)
+- 15% = top 15% of hands. 30%-50% = between top 30% and 50%
+- TT+ = TT, JJ, QQ, KK, AA (all combos). TT-77 = TT, 99, 88, 77
+- ATs+ = ATs, AJs, AQs, AKs. ATo-AJo = ATo, AJo
+- Q+ = queen or higher
+- 25%:xx = top 25% suited. 40%!AA-22 = top 40% not a pair
+- A!AK = ace but not ace-king
+
+OMAHA EXAMPLES:
+- AA = at least two aces + 2 random cards. AxAyxy = double-suited aces, AA$ds = same
+- AxAyxz or AA$ss = single-suited aces
+- RROO = two pairs. JRON = jack + three other ranks
+- 9876- = medium rundown. *$np = no pairs. AA!AAA = exactly two aces
+- AAKK = aces with kings. AARR = aces with another pair
+- 40%!RR = top 40% no pairs
+- (Ax[2x-5x], 2x3x-2x5x):30%-50% = suited wheel cards in 30-50%
+
+OPERATORS:
+- , (comma) = OR/union. : (colon) = AND/intersection. ! = NOT/difference
+- () for grouping. Constraints (: !) have higher precedence than comma.
+
+MACROS: $s=suited, $o=offsuit, $ds=double-suited, $ss=single-suited,
+$np=no pairs, $nt=no trips, $op=one pair, $tp=two pair,
+$0g/$1g/$2g=rundowns, $B=big[A-J], $M=mid[T-7], $Z=small[6-2],
+$W=wheel[A2345], $L=low[A-8], $F=face[K-J], $R=broadway[A-T]
+
+RANGES: TT-77=pair range, KQJT-T987=rundown range, T8+=ascending, 664-=descending
+[A-Q][J-T]23=bracket ranges, K[2s,Jc,T]=card lists
+
+WEIGHTED: AA-KK@100,QQ@50 = always play AA/KK, half the time play QQ
+
+When user types range syntax like "AA" or "20%" in natural language, understand it means ALL combos in that range, not one random hand. The calculator will enumerate every combo and average equities.
 
 Card notation: 2-9,T,J,Q,K,A + h/d/c/s. Example: AsKh = Ace of spades, King of hearts.
 
@@ -2272,78 +2956,116 @@ async function runAICalculation(calc) {
     board2.forEach(c => usedCards.add(c));
   }
 
-  const numOpp = calc.numOpponents || 1;
-  const oppRange = calc.oppRange || 'random';
-  const pctMap = { top5: 5, top10: 10, top15: 15, top20: 20, top25: 25, top30: 30, top40: 40, top50: 50, random: 100 };
-  const pctile = pctMap[oppRange] || 100;
+  const numOpp = calc.numOpponents || 0;
+  const oppRange = calc.oppRange || '';
   const gameType = calc.gameType || 'omaha';
   const isHoldem = gameType === 'holdem';
+  const isDB = gameType === 'doubleBoard';
+  const isOmaha = gameType === 'omaha' || isDB;
 
-  // HOLD'EM RANGE MODE: enumerate ALL hands in the range, run equity vs each, average
-  if (isHoldem && pctile < 100 && heroHands.length === 1) {
+  // Map legacy keywords to PPT syntax
+  const legacyMap = { top5: '5%', top10: '10%', top15: '15%', top20: '20%', top25: '25%', top30: '30%', top40: '40%', top50: '50%' };
+  const normalizedRange = legacyMap[oppRange] || oppRange;
+  const isRangeMode = normalizedRange && normalizedRange !== 'random' && normalizedRange !== '';
+
+  // RANGE MODE: use PPT enumerator to get all opponent combos, run equity vs each
+  if (isRangeMode && heroHands.length >= 1) {
     const heroHand = heroHands[0];
-    const total = HOLDEM_RANKINGS.length;
-    const hiIdx = Math.max(1, Math.round(total * pctile / 100));
-    const rangeHandTypes = HOLDEM_RANKINGS.slice(0, hiIdx);
+    const blocked = new Set([...usedCards, ...board1, ...board2]);
+    const allBoards = [...board1, ...board2];
 
-    const blocked = new Set([...heroHand, ...board1]);
+    // Enumerate opponent combos using PPT range parser
+    const allOppHands = enumerateRange(normalizedRange, isHoldem ? 'holdem' : (isDB ? 'doubleboard' : 'omaha'), blocked);
 
-    const allOppHands = [];
-    for (const [r1, r2, suited] of rangeHandTypes) {
-      const ri1 = r1 - 2, ri2 = r2 - 2;
-      if (r1 === r2) {
-        for (let s1 = 0; s1 < 4; s1++)
-          for (let s2 = s1 + 1; s2 < 4; s2++) {
-            const c1 = ri1*4+s1, c2 = ri2*4+s2;
-            if (!blocked.has(c1) && !blocked.has(c2)) allOppHands.push([c1,c2]);
-          }
-      } else if (suited) {
-        for (let s = 0; s < 4; s++) {
-          const c1 = ri1*4+s, c2 = ri2*4+s;
-          if (!blocked.has(c1) && !blocked.has(c2)) allOppHands.push([c1,c2]);
-        }
-      } else {
-        for (let s1 = 0; s1 < 4; s1++)
-          for (let s2 = 0; s2 < 4; s2++) {
-            if (s1 === s2) continue;
-            const c1 = ri1*4+s1, c2 = ri2*4+s2;
-            if (!blocked.has(c1) && !blocked.has(c2)) allOppHands.push([c1,c2]);
-          }
+    if (allOppHands.length === 0) throw new Error('No valid opponent hands in range "' + oppRange + '"');
+
+    const rangeLabel = rangeToLabel(normalizedRange);
+
+    if (isDB) {
+      // Double board range mode
+      let heroOverall = 0, oppOverall = 0;
+      let heroB1 = 0, oppB1 = 0, heroB2 = 0, oppB2 = 0;
+      let heroScoop = 0, oppScoop = 0;
+      let totalTrials = 0;
+
+      for (const oppHand of allOppHands) {
+        const matchHands = [heroHand, oppHand];
+        const au = new Set([...heroHand, ...oppHand, ...board1, ...board2]);
+        const rem = []; for (let i = 0; i < 52; i++) { if (!au.has(i)) rem.push(i); }
+        const r = simulateDoubleBoard(matchHands, board1, board2, rem);
+        heroOverall += r.overallEquity[0]; oppOverall += r.overallEquity[1];
+        heroB1 += r.board1Equity[0]; oppB1 += r.board1Equity[1];
+        heroB2 += r.board2Equity[0]; oppB2 += r.board2Equity[1];
+        heroScoop += r.scoopPct[0]; oppScoop += r.scoopPct[1];
+        totalTrials += r.trials;
       }
-    }
+      const n = allOppHands.length;
+      return {
+        trials: totalTrials,
+        overallEquity: [heroOverall/n, oppOverall/n],
+        board1Equity: [heroB1/n, oppB1/n],
+        board2Equity: [heroB2/n, oppB2/n],
+        scoopPct: [heroScoop/n, oppScoop/n],
+        exhaustive: false,
+        allHands: [heroHand],
+        board1: board1,
+        board2: board2,
+        heroCount: 1,
+        gameType: gameType,
+        isRange: true,
+        rangeName: rangeLabel,
+        rangeCombos: n,
+        rangeTypes: allOppHands.length
+      };
+    } else {
+      // Hold'em or Omaha range mode
+      let totalHeroEq = 0, totalTrials = 0;
+      const simFn = isHoldem ? simulateHoldem : simulateOmaha;
+      const bc = board1;
 
-    let totalHeroEq = 0, totalTrials = 0;
-    for (const oppHand of allOppHands) {
-      const mh = [heroHand, oppHand];
-      const au = new Set([...heroHand, ...oppHand, ...board1]);
-      const rem = []; for (let i = 0; i < 52; i++) { if (!au.has(i)) rem.push(i); }
-      const r = simulateHoldem(mh, board1, rem);
-      totalHeroEq += r.equities[0] * r.trials;
-      totalTrials += r.trials;
-    }
+      // Cap combos for performance — if too many combos, sample randomly
+      let combosToRun = allOppHands;
+      if (allOppHands.length > 80) {
+        shuffleArray(allOppHands);
+        combosToRun = allOppHands.slice(0, 80);
+      }
 
-    const heroEq = totalHeroEq / totalTrials;
-    const results = {
-      trials: totalTrials,
-      equities: [heroEq, 1 - heroEq],
-      wins: [Math.round(heroEq * allOppHands.length), Math.round((1-heroEq) * allOppHands.length)],
-      ties: [0, 0],
-      allHands: [heroHand],
-      board1: board1,
-      board2: [],
-      heroCount: 1,
-      gameType: 'holdem',
-      isRange: true,
-      rangeName: oppRange,
-      rangeCombos: allOppHands.length,
-      rangeTypes: rangeHandTypes.length
-    };
-    return results;
+      for (const oppHand of combosToRun) {
+        const mh = [heroHand, oppHand];
+        const au = new Set([...heroHand, ...oppHand, ...bc]);
+        const rem = []; for (let i = 0; i < 52; i++) { if (!au.has(i)) rem.push(i); }
+        const r = simFn(mh, bc, rem);
+        totalHeroEq += r.equity[0] * r.trials;
+        totalTrials += r.trials;
+      }
+
+      const heroEq = totalHeroEq / totalTrials;
+      return {
+        trials: totalTrials,
+        equities: [heroEq, 1 - heroEq],
+        wins: [Math.round(heroEq * allOppHands.length), Math.round((1-heroEq) * allOppHands.length)],
+        ties: [0, 0],
+        allHands: [heroHand],
+        board1: board1,
+        board2: [],
+        heroCount: 1,
+        gameType: isHoldem ? 'holdem' : 'omaha',
+        isRange: true,
+        rangeName: rangeLabel,
+        rangeCombos: allOppHands.length,
+        rangeTypes: allOppHands.length
+      };
+    }
   }
 
   // NON-RANGE MODE: generate random opponent hands
+  // Determine pctile for random generation
+  const pctMap = { top5: 5, top10: 10, top15: 15, top20: 20, top25: 25, top30: 30, top40: 40, top50: 50, random: 100 };
+  const pctile = pctMap[oppRange] || 100;
+  const actualNumOpp = numOpp || (heroHands.length <= 1 && !oppRange ? 1 : numOpp);
+
   const oppHands = [];
-  for (let i = 0; i < numOpp; i++) {
+  for (let i = 0; i < actualNumOpp; i++) {
     let hand;
     if (isHoldem) {
       hand = generateRandomHoldemHand(usedCards);
@@ -2417,7 +3139,8 @@ function formatCalcResultsForClaude(calc, results) {
       msg += 'Board2=' + (results.board2Equity[i] * 100).toFixed(2) + '%, ';
       msg += 'Scoop=' + (results.scoopPct[i] * 100).toFixed(2) + '%\n';
     } else {
-      msg += label + ' (' + handStr + '): Equity=' + (results.equities[i] * 100).toFixed(2) + '%';
+      const eqArr = results.equities || results.equity;
+      msg += label + ' (' + handStr + '): Equity=' + (eqArr[i] * 100).toFixed(2) + '%';
       msg += ', Win=' + (results.wins[i] / results.trials * 100).toFixed(2) + '%';
       msg += ', Tie=' + (results.ties[i] / results.trials * 100).toFixed(2) + '%\n';
     }
@@ -2465,7 +3188,8 @@ function renderCalcResultsHTML(calc, results) {
       const label = i < results.heroCount ? '<strong>Hero' + (results.heroCount > 1 ? ' ' + (i+1) : '') + '</strong>' : 'Opp ' + (i - results.heroCount + 1);
       html += '<tr>';
       html += '<td>' + label + ' <span style="font-family:monospace;font-size:11px;">' + cardsToHTML(results.allHands[i]) + '</span></td>';
-      html += '<td><strong>' + (results.equity[i] * 100).toFixed(1) + '%</strong></td>';
+      const eqArr = results.equities || results.equity;
+      html += '<td><strong>' + (eqArr[i] * 100).toFixed(1) + '%</strong></td>';
       html += '<td>' + (results.wins[i] / results.trials * 100).toFixed(1) + '%</td>';
       html += '<td>' + (results.ties[i] / results.trials * 100).toFixed(1) + '%</td>';
       html += '</tr>';
