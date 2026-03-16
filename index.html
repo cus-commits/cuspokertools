@@ -67,6 +67,21 @@ select { font-family: Arial, sans-serif; cursor: pointer; }
   pointer-events: all; cursor: grab;
 }
 .range-controls .range-label { font-size: 11px; font-weight: bold; color: #4a7c59; min-width: 80px; text-align: center; line-height: 1.2; }
+
+/* Syntax filter dropdown */
+.filter-btn { font-size: 11px; padding: 3px 6px; border: 1px solid #999; border-radius: 3px; background: #f0f0f0; cursor: pointer; color: #555; white-space: nowrap; position: relative; }
+.filter-btn:hover { background: #e0e0e0; }
+.filter-menu { display: none; position: absolute; top: 100%; left: 0; background: white; border: 1px solid #aaa; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 500; min-width: 180px; max-height: 350px; overflow-y: auto; font-size: 12px; }
+.filter-menu.open { display: block; }
+.filter-item { padding: 6px 12px; cursor: pointer; white-space: nowrap; display: flex; justify-content: space-between; align-items: center; }
+.filter-item:hover { background: #e8f5e9; }
+.filter-item .syntax { color: #888; font-family: monospace; font-size: 11px; margin-left: 12px; }
+.filter-sep { border-top: 1px solid #ddd; margin: 4px 0; }
+.filter-item.has-sub { position: relative; }
+.filter-item.has-sub::after { content: '▸'; margin-left: 8px; color: #999; }
+.filter-sub { display: none; position: absolute; left: 100%; top: 0; background: white; border: 1px solid #aaa; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); min-width: 140px; z-index: 501; }
+.filter-item.has-sub:hover .filter-sub { display: block; }
+.filter-sub .filter-item { padding: 5px 10px; }
 .more-hands { color: #2a6e3f; cursor: pointer; font-size: 12px; text-decoration: underline; margin: 6px 0; display: inline-block; }
 .more-hands:hover { color: #1a5e2f; }
 
@@ -477,6 +492,8 @@ function addHandSlot() {
     '<span class="hand-label">hand ' + n + ':</span>' +
     '<input type="text" id="hand-' + n + '" placeholder="' + ph + '">' +
     '<button class="card-picker-btn" onclick="openCardPicker(\'hand-' + n + '\')" title="Pick cards">&#127183;</button>' +
+    '<span style="position:relative;display:inline-block;"><button class="filter-btn" onclick="toggleFilterMenu(' + n + ')" title="Range filters">▼ Filter</button>' +
+    '<div class="filter-menu" id="filter-menu-' + n + '">' + buildFilterMenuHTML(n) + '</div></span>' +
     '<button class="mode-toggle" id="mode-' + n + '" onclick="toggleHandMode(' + n + ')" title="Switch to Range mode">Range</button>' +
     '<button class="remove-btn" onclick="removeHand(' + n + ')" title="Remove">&times;</button>' +
     '<div class="range-controls" id="range-' + n + '" style="display:none;">' +
@@ -552,6 +569,127 @@ function removeHand(n) {
   const el = document.getElementById('hand-row-' + n);
   if (el) el.remove();
 }
+
+// ── Filter Menu ──
+function buildFilterMenuHTML(n) {
+  const gt = document.getElementById('game-type')?.value || 'omaha';
+  const isHE = gt === 'holdem';
+  let html = '';
+
+  if (!isHE) {
+    // PLO filters
+    html += '<div class="filter-item has-sub">Contains Pair' +
+      '<div class="filter-sub">' +
+        ['AA','KK','QQ','JJ','TT','99','88','77','66','55','44','33','22'].map(p =>
+          '<div class="filter-item" onclick="applyFilter('+n+',\''+p+'\')">' + p + '</div>'
+        ).join('') +
+      '</div></div>';
+    html += '<div class="filter-item" onclick="applyFilter('+n+',\'RROO\')">Two Pair <span class="syntax">RROO</span></div>';
+    html += '<div class="filter-sep"></div>';
+    html += '<div class="filter-item has-sub">Suited' +
+      '<div class="filter-sub">' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'*$ds\')">Double Suited <span class="syntax">$ds</span></div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'*$ss\')">Single Suited <span class="syntax">$ss</span></div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'wxyz\')">Badugi/Rainbow <span class="syntax">wxyz</span></div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'ss\')">Two Spades <span class="syntax">ss</span></div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'hh\')">Two Hearts <span class="syntax">hh</span></div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'dd\')">Two Diamonds <span class="syntax">dd</span></div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'cc\')">Two Clubs <span class="syntax">cc</span></div>' +
+      '</div></div>';
+    html += '<div class="filter-sep"></div>';
+    html += '<div class="filter-item has-sub">Rundowns' +
+      '<div class="filter-sub">' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'AKQJ-T987\')">High Rundown <span class="syntax">AKQJ-T987</span></div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'9876-\')">Medium Rundown <span class="syntax">9876-</span></div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'*$0g\')">0-Gap <span class="syntax">$0g</span></div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'*$1g\')">1-Gap <span class="syntax">$1g</span></div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'*$2g\')">2-Gap <span class="syntax">$2g</span></div>' +
+      '</div></div>';
+    html += '<div class="filter-sep"></div>';
+    html += '<div class="filter-item" onclick="applyFilter('+n+',\'*$np\')">No Pairs <span class="syntax">$np</span></div>';
+    html += '<div class="filter-item" onclick="applyFilter('+n+',\'*$nt\')">No Trips <span class="syntax">$nt</span></div>';
+    html += '<div class="filter-item" onclick="applyFilter('+n+',\'AA!AAA\')">Exactly 2 Aces <span class="syntax">AA!AAA</span></div>';
+    html += '<div class="filter-sep"></div>';
+    html += '<div class="filter-item has-sub">Card Sizes' +
+      '<div class="filter-sub">' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'$B$B$B$B\')">All Big [A-J] <span class="syntax">$B$B$B$B</span></div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'$M$M$M$M\')">All Mid [T-7] <span class="syntax">$M$M$M$M</span></div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'$Z$Z$Z$Z\')">All Small [6-2] <span class="syntax">$Z$Z$Z$Z</span></div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'$W$W$W$W\')">Wheel Cards <span class="syntax">$W$W$W$W</span></div>' +
+      '</div></div>';
+    html += '<div class="filter-sep"></div>';
+    html += '<div class="filter-item has-sub">Percentile' +
+      '<div class="filter-sub">' +
+        ['5','10','15','20','25','30','40','50'].map(p =>
+          '<div class="filter-item" onclick="applyFilter('+n+',\''+p+'%\')">Top ' + p + '% <span class="syntax">' + p + '%</span></div>'
+        ).join('') +
+      '</div></div>';
+    html += '<div class="filter-item" onclick="applyFilter('+n+',\'*\')">Random <span class="syntax">*</span></div>';
+  } else {
+    // Hold'em filters
+    html += '<div class="filter-item has-sub">Pairs' +
+      '<div class="filter-sub">' +
+        ['AA','KK','QQ','JJ','TT','99','88','77','66','55','44','33','22'].map(p =>
+          '<div class="filter-item" onclick="applyFilter('+n+',\''+p+'\')">' + p + '</div>'
+        ).join('') +
+        '<div class="filter-sep"></div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'TT+\')">TT+ <span class="syntax">TT+</span></div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'77+\')">77+ <span class="syntax">77+</span></div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'22+\')">Any Pair <span class="syntax">22+</span></div>' +
+      '</div></div>';
+    html += '<div class="filter-item has-sub">Broadway' +
+      '<div class="filter-sub">' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'AK\')">AK</div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'AQ\')">AQ</div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'AJ\')">AJ</div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'KQ\')">KQ</div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'KJ\')">KJ</div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'QJ\')">QJ</div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'JT\')">JT</div>' +
+      '</div></div>';
+    html += '<div class="filter-item has-sub">Suited' +
+      '<div class="filter-sub">' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'AKs\')">AKs</div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'AQs\')">AQs</div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'KQs\')">KQs</div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'Axs\')">Suited Ace <span class="syntax">Axs</span></div>' +
+        '<div class="filter-item" onclick="applyFilter('+n+',\'Kxs\')">Suited King <span class="syntax">Kxs</span></div>' +
+      '</div></div>';
+    html += '<div class="filter-sep"></div>';
+    html += '<div class="filter-item" onclick="applyFilter('+n+',\'*\')">Random <span class="syntax">*</span></div>';
+  }
+  return html;
+}
+function toggleFilterMenu(n) {
+  // Close all other menus first
+  document.querySelectorAll('.filter-menu.open').forEach(m => m.classList.remove('open'));
+  const menu = document.getElementById('filter-menu-' + n);
+  if (menu) {
+    // Rebuild in case game type changed
+    menu.innerHTML = buildFilterMenuHTML(n);
+    menu.classList.toggle('open');
+  }
+}
+function applyFilter(n, syntax) {
+  const inp = document.getElementById('hand-' + n);
+  if (inp) {
+    // Append with comma if there's already content
+    if (inp.value.trim()) {
+      inp.value = inp.value.trim() + ', ' + syntax;
+    } else {
+      inp.value = syntax;
+    }
+  }
+  // Close menu
+  document.querySelectorAll('.filter-menu.open').forEach(m => m.classList.remove('open'));
+}
+// Close filter menus when clicking outside
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.filter-btn') && !e.target.closest('.filter-menu')) {
+    document.querySelectorAll('.filter-menu.open').forEach(m => m.classList.remove('open'));
+  }
+});
+
 function clearAll() {
   document.getElementById('board-input').value = '';
   document.getElementById('board1-input').value = '';
@@ -1617,6 +1755,21 @@ CRITICAL: The hands array contains ALL known hands. numOpponents is ONLY for gen
 - Use standard poker terminology
 - Card notation: Rank (2-9, T, J, Q, K, A) + suit (h=hearts, d=diamonds, c=clubs, s=spades)
 - Always show the specific hands and boards you are using before running calculations
+
+PROPOKERTOOLS SYNTAX (understand these when users use them):
+- AA = at least two aces, AA** implicit. KK, QQ etc same.
+- AxAyxy = double-suited aces, AA$ds = same
+- AxAyxz = single-suited aces, AA$ss = same
+- RROO = two pair hand, RRON = one pair + 2 ranks, JRON = jack + 3 ranks
+- * = random hand, 15% = top 15%, 5%-10% = between top 5 and 10%
+- xx:15% = suited AND top 15%, 40%!RR = top 40% no pairs
+- Comma = OR (AA,KK), Colon = AND (xx:15%), ! = NOT (AA!AAA = exactly 2 aces)
+- TT-77 = range of pairs, KQJT-T987 = rundown range, T8+ = ascending, 9876- = descending
+- $ds=double-suited, $ss=single-suited, $np=no pairs, $nt=no trips
+- $0g=0-gap rundown, $1g=1-gap, $2g=2-gap
+- $B=big[A-J], $M=mid[T-7], $Z=small[6-2], $W=wheel[A2345]
+- wxyz = suit variables (won't bind to explicit suits), ss = two spades
+When the user describes ranges in natural language, translate to this syntax mentally and use it in your analysis.
 
 FORMATTING:
 - Use **bold** for key results and hand names
