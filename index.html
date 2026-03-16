@@ -87,9 +87,64 @@ table.results-table .equity-cell { font-weight: bold; }
 .loading { color: #2a6e3f; font-weight: bold; font-size: 14px; }
 .placeholder-text { color: #888; font-size: 13px; font-style: italic; margin-top: 30px; }
 
-/* Card suit colors in results */
-.suit-h, .suit-d { color: #cc0000; }
-.suit-c, .suit-s { color: #333; }
+/* 4-Color Deck suit colors */
+.suit-s { color: #000; }
+.suit-h { color: #e00; }
+.suit-d { color: #00c; }
+.suit-c { color: #080; }
+
+/* Card Picker Button */
+.card-picker-btn {
+  background: none; border: 1px solid #aaa; border-radius: 3px; cursor: pointer;
+  font-size: 16px; padding: 2px 6px; line-height: 1; color: #555;
+}
+.card-picker-btn:hover { background: #e8f5e9; border-color: #4a7c59; }
+
+/* Card Picker Overlay */
+.card-picker-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.4); z-index: 2000;
+  display: flex; justify-content: center; align-items: center;
+}
+.card-picker-popup {
+  background: white; border-radius: 8px; padding: 15px; box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+  max-width: 95vw; max-height: 90vh; overflow: auto;
+}
+.card-picker-popup h4 { margin: 0 0 10px; color: #4a7c59; font-size: 14px; }
+.card-picker-grid {
+  display: grid; grid-template-columns: repeat(13, 1fr); gap: 3px;
+}
+.card-picker-cell {
+  width: 34px; height: 42px; border: 1px solid #ccc; border-radius: 3px;
+  background: #fff; cursor: pointer; font-size: 12px; font-weight: bold;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Courier New', monospace; user-select: none; padding: 0;
+}
+.card-picker-cell:hover:not(.cp-disabled) { background: #f0f8f2; border-color: #4a7c59; }
+.card-picker-cell.cp-selected { background: #c8e6c9; border: 2px solid #4a7c59; }
+.card-picker-cell.cp-disabled { opacity: 0.3; cursor: not-allowed; background: #eee; }
+.card-picker-cell.cp-suit-s { color: #000; }
+.card-picker-cell.cp-suit-h { color: #e00; }
+.card-picker-cell.cp-suit-d { color: #00c; }
+.card-picker-cell.cp-suit-c { color: #080; }
+.card-picker-actions {
+  display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end;
+}
+.card-picker-actions button {
+  padding: 6px 16px; font-size: 13px; cursor: pointer; border-radius: 4px; font-weight: bold;
+}
+.cp-done-btn { background: #4a7c59; color: white; border: none; }
+.cp-done-btn:hover { background: #3d6b4a; }
+.cp-clear-btn { background: #eee; color: #333; border: 1px solid #aaa; }
+.cp-clear-btn:hover { background: #ddd; }
+.card-picker-row-label {
+  display: flex; align-items: center; font-size: 18px; font-weight: bold;
+  justify-content: center; padding-right: 4px;
+}
+@media (max-width: 520px) {
+  .card-picker-cell { width: 26px; height: 34px; font-size: 10px; }
+  .card-picker-grid { gap: 2px; }
+}
 
 /* Pages */
 .page { display: none; }
@@ -264,7 +319,7 @@ table.results-table .equity-cell { font-weight: bold; }
 <div id="page-sim" class="page active">
   <div class="main">
     <div class="left-panel">
-      <label for="game-type">Game Type</label>
+      <label for="game-type">game:</label>
       <select id="game-type" onchange="onGameTypeChange()">
         <option value="holdem">Hold'em</option>
         <option value="omaha">Omaha (PLO4)</option>
@@ -272,21 +327,33 @@ table.results-table .equity-cell { font-weight: bold; }
       </select>
 
       <div id="board-section-single">
-        <label for="board-input">Board</label>
-        <input type="text" id="board-input" placeholder="e.g. Kh 3c 4c">
+        <label for="board-input">board:</label>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <input type="text" id="board-input" placeholder="e.g. Kh 3c 4c" style="flex:1;">
+          <button class="card-picker-btn" onclick="openCardPicker('board-input')" title="Pick cards">&#127183;</button>
+        </div>
       </div>
 
       <div id="board-section-double" style="display:none;">
-        <label for="board1-input">Board 1</label>
-        <input type="text" id="board1-input" placeholder="e.g. Kh 3c 4c">
-        <label for="board2-input">Board 2</label>
-        <input type="text" id="board2-input" placeholder="e.g. Ts 7d 2h">
+        <label for="board1-input">board 1:</label>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <input type="text" id="board1-input" placeholder="e.g. Kh 3c 4c" style="flex:1;">
+          <button class="card-picker-btn" onclick="openCardPicker('board1-input')" title="Pick cards">&#127183;</button>
+        </div>
+        <label for="board2-input">board 2:</label>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <input type="text" id="board2-input" placeholder="e.g. Ts 7d 2h" style="flex:1;">
+          <button class="card-picker-btn" onclick="openCardPicker('board2-input')" title="Pick cards">&#127183;</button>
+        </div>
       </div>
 
-      <label for="dead-input">Dead Cards</label>
-      <input type="text" id="dead-input" placeholder="e.g. 9h 9d">
+      <label for="dead-input">dead cards:</label>
+      <div style="display:flex;gap:4px;align-items:center;">
+        <input type="text" id="dead-input" placeholder="e.g. 9h 9d" style="flex:1;">
+        <button class="card-picker-btn" onclick="openCardPicker('dead-input')" title="Pick cards">&#127183;</button>
+      </div>
 
-      <label>Hands</label>
+      <label>hands:</label>
       <div id="hands-container"></div>
       <a class="more-hands" onclick="addHandSlot()">+ More hands</a>
 
@@ -391,8 +458,9 @@ function addHandSlot() {
   const gt = document.getElementById('game-type').value;
   const ph = gt === 'holdem' ? 'e.g. AhKs' : 'e.g. AhKsQdJc';
   div.innerHTML =
-    '<span class="hand-label">Hand ' + n + ':</span>' +
+    '<span class="hand-label">hand ' + n + ':</span>' +
     '<input type="text" id="hand-' + n + '" placeholder="' + ph + '">' +
+    '<button class="card-picker-btn" onclick="openCardPicker(\'hand-' + n + '\')" title="Pick cards">&#127183;</button>' +
     '<button class="mode-toggle" id="mode-' + n + '" onclick="toggleHandMode(' + n + ')" title="Switch to Range mode">Range</button>' +
     '<button class="remove-btn" onclick="removeHand(' + n + ')" title="Remove">&times;</button>' +
     '<div class="range-controls" id="range-' + n + '" style="display:none;">' +
@@ -684,7 +752,7 @@ function runSimulation() {
             throw new Error('Hand ' + slot.id + ': expected ' + expectedLen + ' cards, got ' + cards.length);
           }
           hands.push(cards);
-          handLabels.push(cardsToStr(cards));
+          handLabels.push(cardsToHTML(cards));
           cards.forEach(c => usedForRange.add(c));
         }
       }
@@ -702,7 +770,7 @@ function runSimulation() {
         hand.forEach(c => usedForRange.add(c));
         hands.push(hand);
         const dirLabel = slot.direction === 'top' ? 'Top' : 'Btm';
-        handLabels.push(cardsToStr(hand) + ' (' + dirLabel + ' ' + slot.pct + '%)');
+        handLabels.push(cardsToHTML(hand) + ' <span style="font-size:11px;color:#888;">(' + dirLabel + ' ' + slot.pct + '%)</span>');
       }
     }
 
@@ -1045,12 +1113,7 @@ function displayResults(gameType, hands, handLabels, boardCards, board1Cards, bo
 }
 
 function formatCards(cardIndices) {
-  return cardIndices.map(idx => {
-    const c = cardFromIndex(idx);
-    const suitClass = 'suit-' + c.suit;
-    const suitSymbol = { h: '\u2665', d: '\u2666', c: '\u2663', s: '\u2660' }[c.suit];
-    return '<span class="' + suitClass + '">' + c.rank + suitSymbol + '</span>';
-  }).join(' ');
+  return cardsToHTML(cardIndices);
 }
 
 // ============================================================
@@ -1557,7 +1620,8 @@ function appendAIMessage(html) {
 
   const div = document.createElement('div');
   div.className = 'ai-msg ai-msg-ai';
-  div.innerHTML = html;
+  // Colorize any card references in the HTML
+  div.innerHTML = colorizeCards(html);
   area.appendChild(div);
   area.scrollTop = area.scrollHeight;
   return div;
@@ -1851,8 +1915,8 @@ function renderCalcResultsHTML(calc, results) {
   let html = '<strong>Calculation Results</strong><br>';
   html += '<span style="font-size:11px;color:#888;">' + results.trials.toLocaleString() + ' trials (' + (results.exhaustive ? 'exhaustive' : 'Monte Carlo') + ')</span><br><br>';
 
-  if (results.board1.length > 0) html += 'Board 1: <strong>' + cardsToStr(results.board1) + '</strong><br>';
-  if (results.board2.length > 0) html += 'Board 2: <strong>' + cardsToStr(results.board2) + '</strong><br>';
+  if (results.board1.length > 0) html += 'Board 1: <strong>' + cardsToHTML(results.board1) + '</strong><br>';
+  if (results.board2.length > 0) html += 'Board 2: <strong>' + cardsToHTML(results.board2) + '</strong><br>';
   html += '<br>';
 
   if (results.gameType === 'doubleBoard') {
@@ -1860,7 +1924,7 @@ function renderCalcResultsHTML(calc, results) {
     for (let i = 0; i < results.allHands.length; i++) {
       const label = i < results.heroCount ? '<strong>Hero' + (results.heroCount > 1 ? ' ' + (i+1) : '') + '</strong>' : 'Opp ' + (i - results.heroCount + 1);
       html += '<tr>';
-      html += '<td>' + label + ' <span style="font-family:monospace;font-size:11px;">' + cardsToStr(results.allHands[i]) + '</span></td>';
+      html += '<td>' + label + ' <span style="font-family:monospace;font-size:11px;">' + cardsToHTML(results.allHands[i]) + '</span></td>';
       html += '<td><strong>' + (results.overallEquity[i] * 100).toFixed(1) + '%</strong></td>';
       html += '<td>' + (results.board1Equity[i] * 100).toFixed(1) + '%</td>';
       html += '<td>' + (results.board2Equity[i] * 100).toFixed(1) + '%</td>';
@@ -1873,7 +1937,7 @@ function renderCalcResultsHTML(calc, results) {
     for (let i = 0; i < results.allHands.length; i++) {
       const label = i < results.heroCount ? '<strong>Hero' + (results.heroCount > 1 ? ' ' + (i+1) : '') + '</strong>' : 'Opp ' + (i - results.heroCount + 1);
       html += '<tr>';
-      html += '<td>' + label + ' <span style="font-family:monospace;font-size:11px;">' + cardsToStr(results.allHands[i]) + '</span></td>';
+      html += '<td>' + label + ' <span style="font-family:monospace;font-size:11px;">' + cardsToHTML(results.allHands[i]) + '</span></td>';
       html += '<td><strong>' + (results.equity[i] * 100).toFixed(1) + '%</strong></td>';
       html += '<td>' + (results.wins[i] / results.trials * 100).toFixed(1) + '%</td>';
       html += '<td>' + (results.ties[i] / results.trials * 100).toFixed(1) + '%</td>';
@@ -2068,6 +2132,161 @@ function toggleHistoryDetail(idx) {
 
 function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ============================================================
+// 4-Color Deck: colorizeCards and cardsToHTML
+// ============================================================
+const SUIT_SYMBOLS = { h: '\u2665', d: '\u2666', c: '\u2663', s: '\u2660' };
+const SUIT_COLORS = { s: '#000', h: '#e00', d: '#00c', c: '#080' };
+
+function cardsToHTML(indices) {
+  return indices.map(i => {
+    const c = cardFromIndex(i);
+    const sym = SUIT_SYMBOLS[c.suit];
+    const color = SUIT_COLORS[c.suit];
+    return '<span style="color:' + color + ';font-weight:bold;">' + c.rank + sym + '</span>';
+  }).join(' ');
+}
+
+function colorizeCards(text) {
+  // Replace card notation like Ah, Ks, Qd, 3c with colored HTML
+  return text.replace(/\b([AKQJT2-9])([hdcs])\b/gi, function(match, rank, suit) {
+    const s = suit.toLowerCase();
+    const r = rank.toUpperCase();
+    const sym = SUIT_SYMBOLS[s] || s;
+    const color = SUIT_COLORS[s] || '#333';
+    return '<span style="color:' + color + ';font-weight:bold;">' + r + sym + '</span>';
+  });
+}
+
+// ============================================================
+// Visual Card Picker
+// ============================================================
+let cardPickerTargetInput = null;
+let cardPickerSelected = new Set();
+
+function getUsedCards(excludeInputId) {
+  // Collect all cards used in all input fields except the target
+  const used = new Set();
+  const inputIds = ['board-input', 'board1-input', 'board2-input', 'dead-input'];
+  // Add all hand inputs
+  document.querySelectorAll('#hands-container input[type="text"]').forEach(inp => {
+    inputIds.push(inp.id);
+  });
+  for (const id of inputIds) {
+    if (id === excludeInputId) continue;
+    const el = document.getElementById(id);
+    if (!el || !el.value.trim()) continue;
+    try {
+      const cards = parseCards(el.value);
+      cards.forEach(c => used.add(c));
+    } catch(e) { /* ignore parse errors */ }
+  }
+  return used;
+}
+
+function openCardPicker(inputId) {
+  cardPickerTargetInput = inputId;
+  const inp = document.getElementById(inputId);
+
+  // Parse current value to pre-select cards
+  cardPickerSelected = new Set();
+  if (inp && inp.value.trim()) {
+    try {
+      const cards = parseCards(inp.value);
+      cards.forEach(c => cardPickerSelected.add(c));
+    } catch(e) { /* ignore */ }
+  }
+
+  const usedElsewhere = getUsedCards(inputId);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'card-picker-overlay';
+  overlay.id = 'card-picker-overlay';
+  overlay.onclick = function(e) { if (e.target === overlay) closeCardPicker(); };
+
+  const popup = document.createElement('div');
+  popup.className = 'card-picker-popup';
+
+  // Determine max cards
+  let maxCards = 52; // default (board/dead)
+  if (inputId.startsWith('hand-')) {
+    const gt = document.getElementById('game-type').value;
+    maxCards = gt === 'holdem' ? 2 : 4;
+  } else if (inputId === 'board-input' || inputId === 'board1-input' || inputId === 'board2-input') {
+    maxCards = 5;
+  }
+
+  let title = 'Select Cards';
+  if (inputId.startsWith('hand-')) title = 'Select Hand Cards (max ' + maxCards + ')';
+  else if (inputId.includes('board')) title = 'Select Board Cards (max 5)';
+  else if (inputId === 'dead-input') title = 'Select Dead Cards';
+
+  popup.innerHTML = '<h4>' + title + '</h4><div class="card-picker-grid" id="cp-grid"></div>' +
+    '<div class="card-picker-actions">' +
+    '<button class="cp-clear-btn" onclick="cpClearAll()">Clear</button>' +
+    '<button class="cp-done-btn" onclick="cpDone()">Done</button>' +
+    '</div>';
+
+  overlay.appendChild(popup);
+  document.body.appendChild(overlay);
+
+  const grid = document.getElementById('cp-grid');
+  const rankOrder = ['A','K','Q','J','T','9','8','7','6','5','4','3','2'];
+  const suitOrder = ['s','h','d','c'];
+  const suitSymbols = { s: '\u2660', h: '\u2665', d: '\u2666', c: '\u2663' };
+
+  for (const suit of suitOrder) {
+    for (const rank of rankOrder) {
+      const idx = cardIndex(rank, suit);
+      const btn = document.createElement('button');
+      btn.className = 'card-picker-cell cp-suit-' + suit;
+      btn.textContent = rank + suitSymbols[suit];
+      btn.dataset.cardIdx = idx;
+
+      if (usedElsewhere.has(idx)) {
+        btn.classList.add('cp-disabled');
+      } else if (cardPickerSelected.has(idx)) {
+        btn.classList.add('cp-selected');
+      }
+
+      btn.onclick = function() {
+        if (btn.classList.contains('cp-disabled')) return;
+        const ci = parseInt(btn.dataset.cardIdx);
+        if (cardPickerSelected.has(ci)) {
+          cardPickerSelected.delete(ci);
+          btn.classList.remove('cp-selected');
+        } else {
+          if (cardPickerSelected.size >= maxCards) return; // at max
+          cardPickerSelected.add(ci);
+          btn.classList.add('cp-selected');
+        }
+      };
+      grid.appendChild(btn);
+    }
+  }
+}
+
+function cpClearAll() {
+  cardPickerSelected.clear();
+  document.querySelectorAll('.card-picker-cell.cp-selected').forEach(el => el.classList.remove('cp-selected'));
+}
+
+function cpDone() {
+  const inp = document.getElementById(cardPickerTargetInput);
+  if (inp) {
+    const arr = Array.from(cardPickerSelected);
+    inp.value = arr.map(i => { const c = cardFromIndex(i); return c.rank + c.suit; }).join(' ');
+  }
+  closeCardPicker();
+}
+
+function closeCardPicker() {
+  const overlay = document.getElementById('card-picker-overlay');
+  if (overlay) overlay.remove();
+  cardPickerTargetInput = null;
+  cardPickerSelected = new Set();
 }
 
 // Auto-resize textarea
