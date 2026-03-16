@@ -3068,55 +3068,100 @@ async function runAICalculation(calc, onProgress) {
     });
   }
 
-  // NON-RANGE MODE: generate random opponent hands
-  // Determine pctile for random generation
-  const pctMap = { top5: 5, top10: 10, top15: 15, top20: 20, top25: 25, top30: 30, top40: 40, top50: 50, random: 100 };
-  const pctile = pctMap[oppRange] || 100;
-  const actualNumOpp = numOpp || (heroHands.length <= 1 && !oppRange ? 1 : numOpp);
+  // MULTI-OPPONENT MODE: generate N sets of random opponents, run each, average
+  const pctMap2 = { top5: 5, top10: 10, top15: 15, top20: 20, top25: 25, top30: 30, top40: 40, top50: 50, random: 100 };
+  const pctile = pctMap2[oppRange] || 100;
+  const actualNumOpp = numOpp || 1;
+  const NUM_SAMPLES = 30; // Run 30 random deals and average
 
-  const oppHands = [];
-  for (let i = 0; i < actualNumOpp; i++) {
-    let hand;
-    if (isHoldem) {
-      hand = generateRandomHoldemHand(usedCards);
-    } else {
-      if (pctile <= 30) {
-        hand = generateRandomPLOHand(usedCards, pctile);
+  return new Promise((resolve) => {
+    let sampleIdx = 0;
+    let totalHeroEq = 0;
+    let totalHeroB1 = 0, totalHeroB2 = 0, totalHeroScoop = 0;
+    const heroHand = heroHands[0];
+
+    function runSample() {
+      // Generate fresh random opponents for this sample
+      const sampleUsed = new Set(usedCards);
+      const oppHands = [];
+      for (let i = 0; i < actualNumOpp; i++) {
+        let hand;
+        if (isHoldem) {
+          hand = generateRandomHoldemHand(sampleUsed);
+        } else {
+          if (pctile <= 30) {
+            hand = generateRandomPLOHand(sampleUsed, pctile);
+          } else {
+            const avail = [];
+            for (let ci = 0; ci < 52; ci++) { if (!sampleUsed.has(ci)) avail.push(ci); }
+            shuffleArray(avail);
+            hand = avail.slice(0, isHoldem ? 2 : 4);
+          }
+        }
+        hand.forEach(c => sampleUsed.add(c));
+        oppHands.push(hand);
+      }
+
+      const allHands = heroHands.concat(oppHands);
+      const allUsed2 = new Set();
+      allHands.forEach(h => h.forEach(c => allUsed2.add(c)));
+      board1.forEach(c => allUsed2.add(c));
+      board2.forEach(c => allUsed2.add(c));
+      const remaining = [];
+      for (let i = 0; i < 52; i++) { if (!allUsed2.has(i)) remaining.push(i); }
+
+      if (gameType === 'doubleBoard') {
+        const r = simulateDoubleBoard(allHands, board1, board2, remaining);
+        totalHeroEq += r.overallEquity[0];
+        totalHeroB1 += r.board1Equity[0];
+        totalHeroB2 += r.board2Equity[0];
+        totalHeroScoop += r.scoopPct[0];
+      } else if (gameType === 'holdem') {
+        const r = simulateHoldem(allHands, board1, remaining);
+        const eq = r.equities || r.equity || [];
+        totalHeroEq += (eq[0] || 0);
       } else {
-        const avail = [];
-        for (let ci = 0; ci < 52; ci++) { if (!usedCards.has(ci)) avail.push(ci); }
-        shuffleArray(avail);
-        hand = avail.slice(0, 4);
+        const r = simulateOmaha(allHands, board1, remaining);
+        const eq = r.equities || r.equity || [];
+        totalHeroEq += (eq[0] || 0);
+      }
+
+      sampleIdx++;
+      if (onProgress) {
+        onProgress(sampleIdx, NUM_SAMPLES, totalHeroEq / sampleIdx);
+      }
+
+      if (sampleIdx < NUM_SAMPLES) {
+        setTimeout(runSample, 0);
+      } else {
+        // Average across all samples
+        const n = NUM_SAMPLES;
+        if (gameType === 'doubleBoard') {
+          resolve({
+            trials: n, overallEquity: [totalHeroEq/n, 1-totalHeroEq/n],
+            board1Equity: [totalHeroB1/n, 1-totalHeroB1/n],
+            board2Equity: [totalHeroB2/n, 1-totalHeroB2/n],
+            scoopPct: [totalHeroScoop/n, 0],
+            exhaustive: false, allHands: [heroHand], board1, board2,
+            heroCount: 1, gameType,
+            isRange: true, rangeName: actualNumOpp + ' random opponents (avg of ' + n + ' deals)',
+            rangeCombos: n, rangeTypes: n
+          });
+        } else {
+          resolve({
+            trials: n, equities: [totalHeroEq/n, 1-totalHeroEq/n],
+            wins: [0,0], ties: [0,0],
+            allHands: [heroHand], board1, board2: [],
+            heroCount: 1, gameType: isHoldem ? 'holdem' : 'omaha',
+            isRange: true, rangeName: actualNumOpp + ' random opponents (avg of ' + n + ' deals)',
+            rangeCombos: n, rangeTypes: n
+          });
+        }
       }
     }
-    hand.forEach(c => usedCards.add(c));
-    oppHands.push(hand);
-  }
+    runSample();
+  });
 
-  const allHands = heroHands.concat(oppHands);
-  const allUsed = new Set();
-  allHands.forEach(h => h.forEach(c => allUsed.add(c)));
-  board1.forEach(c => allUsed.add(c));
-  board2.forEach(c => allUsed.add(c));
-  const remaining = [];
-  for (let i = 0; i < 52; i++) { if (!allUsed.has(i)) remaining.push(i); }
-
-  let results;
-  if (gameType === 'doubleBoard') {
-    results = simulateDoubleBoard(allHands, board1, board2, remaining);
-  } else if (gameType === 'holdem') {
-    results = simulateHoldem(allHands, board1, remaining);
-  } else {
-    results = simulateOmaha(allHands, board1, remaining);
-  }
-
-  results.allHands = allHands;
-  results.board1 = board1;
-  results.board2 = board2;
-  results.heroCount = heroHands.length;
-  results.gameType = gameType;
-
-  return results;
 }
 
 function formatCalcResultsForClaude(calc, results) {
@@ -3414,9 +3459,12 @@ function cardsToHTML(indices) {
 
 function colorizeCards(text) {
   // Replace card notation like Ah, Ks, Qd, 3c with colored HTML
-  return text.replace(/\b([AKQJT2-9])([hdcs])\b/gi, function(match, rank, suit) {
+  // Use lookaround-free approach: match rank+suit not inside HTML tags
+  return text.replace(/([AKQJT2-9])([hdcs])(?=[^a-eg-z]|$)/gi, function(match, rank, suit) {
     const s = suit.toLowerCase();
+    // Skip if this looks like part of a regular word (e.g., "the", "hands")
     const r = rank.toUpperCase();
+    if ('HDCS'.includes(r) && 'HDCS'.includes(s.toUpperCase())) return match; // avoid false matches
     const sym = SUIT_SYMBOLS[s] || s;
     const color = SUIT_COLORS[s] || '#333';
     return '<span style="color:' + color + ';font-weight:bold;">' + r + sym + '</span>';
