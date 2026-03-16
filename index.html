@@ -702,82 +702,84 @@ function buildFilterMenuHTML(n) {
 
   if (!isHE) {
     // ── PLO FILTERS ──
-    html += '<div class="filter-item has-sub">Contains Pair' +
-      '<div class="filter-sub">' +
-        'AAKKQQJJTT998877665544332'.match(/.{1}/g).filter((v,i,a) => a.indexOf(v) === i ? true : false).length +
-        ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].map(r =>
-          '<div class="filter-item" onclick="applyGenFilter('+n+',\'pair\',\''+r+'\')">' + r + r + '</div>'
-        ).join('') +
-      '</div></div>';
-    // fix the above
-    html = '';
-    html += '<div class="filter-item has-sub">Contains Pair' +
+    html += '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">Contains Pair' +
       '<div class="filter-sub">' +
         ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].map(r =>
-          '<div class="filter-item" onclick="applyGenFilter('+n+',\'pair\',\''+r+'\')">' + r + r + '</div>'
+          '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'pair\',\''+r+'\')">' + r + r + '</div>'
         ).join('') +
       '</div></div>';
     html += '<div class="filter-item" onclick="applyGenFilter('+n+',\'twopair\')">Two Pair</div>';
     html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item has-sub">Suited' +
+    html += '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">Suited' +
       '<div class="filter-sub">' +
-        '<div class="filter-item" onclick="applyGenFilter('+n+',\'ds\')">Double Suited</div>' +
-        '<div class="filter-item" onclick="applyGenFilter('+n+',\'ss\')">Single Suited</div>' +
-        '<div class="filter-item" onclick="applyGenFilter('+n+',\'rainbow\')">Rainbow/Badugi</div>' +
+        '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'ds\')">Double Suited</div>' +
+        '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'ss\')">Single Suited</div>' +
+        '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'rainbow\')">Rainbow/Badugi</div>' +
       '</div></div>';
     html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item has-sub">Rundowns' +
+    html += '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">Rundowns' +
       '<div class="filter-sub">' +
-        '<div class="filter-item" onclick="applyGenFilter('+n+',\'rundown\',\'high\')">High (AKQJ-TJQK)</div>' +
-        '<div class="filter-item" onclick="applyGenFilter('+n+',\'rundown\',\'mid\')">Medium (T987-6789)</div>' +
-        '<div class="filter-item" onclick="applyGenFilter('+n+',\'rundown\',\'low\')">Low (6543-2345)</div>' +
+        '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'rundown\',\'high\')">High (AKQJ-TJQK)</div>' +
+        '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'rundown\',\'mid\')">Medium (T987-6789)</div>' +
+        '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'rundown\',\'low\')">Low (6543-2345)</div>' +
       '</div></div>';
     html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item has-sub">Top % of Hands' +
+    html += '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">Top % of Hands' +
       '<div class="filter-sub">' +
         ['5','10','15','20','25','30','40','50'].map(p =>
-          '<div class="filter-item" onclick="applyRangeFilter('+n+','+(100-parseInt(p))+',100)">Top ' + p + '%</div>'
+          '<div class="filter-item" onclick="event.stopPropagation(); applyRangeFilter('+n+','+(100-parseInt(p))+',100)">Top ' + p + '%</div>'
         ).join('') +
       '</div></div>';
-    html += '<div class="filter-item has-sub">Bottom % of Hands' +
+    html += '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">Bottom % of Hands' +
       '<div class="filter-sub">' +
         ['5','10','15','20','25','30','40','50'].map(p =>
-          '<div class="filter-item" onclick="applyRangeFilter('+n+',0,'+p+')">Bottom ' + p + '%</div>'
+          '<div class="filter-item" onclick="event.stopPropagation(); applyRangeFilter('+n+',0,'+p+')">Bottom ' + p + '%</div>'
         ).join('') +
       '</div></div>';
     html += '<div class="filter-sep"></div>';
     html += '<div class="filter-item" onclick="applyGenFilter('+n+',\'random\')">Random Hand</div>';
   } else {
     // ── HOLD'EM FILTERS ──
-    html += '<div class="filter-item has-sub">Pairs' +
+    html += '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">Pairs' +
       '<div class="filter-sub">' +
         ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].map(r =>
-          '<div class="filter-item" onclick="applyGenFilter('+n+',\'pair\',\''+r+'\')">' + r + r + '</div>'
+          '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'pair\',\''+r+'\')">' + r + r + '</div>'
         ).join('') +
       '</div></div>';
-    html += '<div class="filter-item has-sub">Broadway' +
+    html += '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">Broadway' +
       '<div class="filter-sub">' +
         [['A','K'],['A','Q'],['A','J'],['K','Q'],['K','J'],['Q','J'],['J','T']].map(([a,b]) =>
-          '<div class="filter-item" onclick="applyGenFilter('+n+',\'offsuit\',\''+a+b+'\')">' + a + b + 'o</div>'
+          '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'offsuit\',\''+a+b+'\')">' + a + b + 'o</div>'
         ).join('') +
       '</div></div>';
-    html += '<div class="filter-item has-sub">Suited' +
+    html += '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">Suited' +
       '<div class="filter-sub">' +
         [['A','K'],['A','Q'],['A','J'],['K','Q'],['K','J'],['Q','J'],['J','T'],['T','9']].map(([a,b]) =>
-          '<div class="filter-item" onclick="applyGenFilter('+n+',\'suited\',\''+a+b+'\')">' + a + b + 's</div>'
+          '<div class="filter-item" onclick="event.stopPropagation(); applyGenFilter('+n+',\'suited\',\''+a+b+'\')">' + a + b + 's</div>'
         ).join('') +
       '</div></div>';
     html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item has-sub">Top % of Hands' +
+    html += '<div class="filter-item has-sub" onclick="toggleSubMenu(event, this)">Top % of Hands' +
       '<div class="filter-sub">' +
         ['5','10','15','20','25','30','40','50'].map(p =>
-          '<div class="filter-item" onclick="applyRangeFilter('+n+','+(100-parseInt(p))+',100)">Top ' + p + '%</div>'
+          '<div class="filter-item" onclick="event.stopPropagation(); applyRangeFilter('+n+','+(100-parseInt(p))+',100)">Top ' + p + '%</div>'
         ).join('') +
       '</div></div>';
     html += '<div class="filter-sep"></div>';
     html += '<div class="filter-item" onclick="applyGenFilter('+n+',\'random\')">Random Hand</div>';
   }
   return html;
+}
+
+function toggleSubMenu(e, el) {
+  e.stopPropagation();
+  const sub = el.querySelector('.filter-sub');
+  if (!sub) return;
+  const isOpen = sub.classList.contains('open');
+  // Close all other submenus in this menu
+  const menu = el.closest('.filter-menu');
+  if (menu) menu.querySelectorAll('.filter-sub.open').forEach(s => s.classList.remove('open'));
+  if (!isOpen) sub.classList.add('open');
 }
 
 function toggleFilterMenu(n) {
@@ -788,24 +790,6 @@ function toggleFilterMenu(n) {
   if (menu && !wasOpen) {
     menu.innerHTML = buildFilterMenuHTML(n);
     menu.classList.add('open');
-    // Use event delegation for submenu toggle
-    menu.addEventListener('click', function(e) {
-      // Only toggle submenu if clicked on the parent item itself, not a child leaf
-      const clickedItem = e.target.closest('.filter-item');
-      if (!clickedItem) return;
-      // If this item is inside a .filter-sub, it's a leaf — let its onclick fire
-      if (clickedItem.closest('.filter-sub')) return;
-      // If this item has a submenu, toggle it
-      if (clickedItem.classList.contains('has-sub')) {
-        e.stopPropagation();
-        const sub = clickedItem.querySelector('.filter-sub');
-        if (sub) {
-          const isOpen = sub.classList.contains('open');
-          menu.querySelectorAll('.filter-sub.open').forEach(s => s.classList.remove('open'));
-          if (!isOpen) sub.classList.add('open');
-        }
-      }
-    });
   }
 }
 
@@ -1343,11 +1327,16 @@ function runSimulation() {
 
       resultsArea.innerHTML = '<p class="loading">Running ' + rangeDesc + ' range (' + allOppHands.length + ' combos)...</p>';
 
-      setTimeout(() => {
-        try {
-          let totalHeroEq = 0, totalOppEq = 0, totalTrials = 0;
+      // Chunked async slider range calculation to avoid freezing
+      const SLIDER_CHUNK = 5;
+      let sliderIdx = 0;
+      let totalHeroEq = 0, totalOppEq = 0, totalTrials = 0;
 
-          for (const oppHand of allOppHands) {
+      function processSliderRangeChunk() {
+        try {
+          const end = Math.min(sliderIdx + SLIDER_CHUNK, allOppHands.length);
+          for (; sliderIdx < end; sliderIdx++) {
+            const oppHand = allOppHands[sliderIdx];
             const matchHands = [heroHand, oppHand];
             const allUsed = new Set([...heroHand, ...oppHand, ...boardCards, ...deadCards]);
             const rem = [];
@@ -1359,22 +1348,34 @@ function runSimulation() {
             totalTrials += r.trials;
           }
 
-          const heroEq = (totalHeroEq / totalTrials * 100).toFixed(2);
-          const oppEq = (totalOppEq / totalTrials * 100).toFixed(2);
+          // Update progress
+          const pct = Math.round(sliderIdx / allOppHands.length * 100);
+          const bar = '\u2588'.repeat(Math.round(pct / 5)) + '\u2591'.repeat(20 - Math.round(pct / 5));
+          const runEq = totalTrials > 0 ? (totalHeroEq / totalTrials * 100).toFixed(1) : '...';
+          resultsArea.innerHTML = '<p class="loading">\u23F3 ' + sliderIdx + '/' + allOppHands.length + ' combos [' + bar + '] ' + pct + '%<br>\uD83D\uDCCA Running equity: ' + runEq + '%</p>';
 
-          let html = '<h3>Hold\'em Simulation</h3>';
-          html += '<p>' + allOppHands.length + ' opponent combos in ' + rangeDesc + ' range</p>';
-          if (boardCards.length > 0) html += '<p><strong>Board:</strong> ' + cardsToHTML(boardCards) + '</p>';
-          html += '<table class="results-table"><thead><tr><th>Hand</th><th>Equity</th></tr></thead><tbody>';
-          html += '<tr><td>Hero ' + cardsToHTML(heroHand) + '</td><td><strong>' + heroEq + '%</strong></td></tr>';
-          html += '<tr><td>' + rangeDesc + ' (' + allOppHands.length + ' combos)</td><td><strong>' + oppEq + '%</strong></td></tr>';
-          html += '</tbody></table>';
-          html += '<p style="font-size:11px;color:#888;margin-top:8px;">Range includes ' + rangeHandTypes.length + ' hand types, ' + allOppHands.length + ' specific combos after removing blocked cards.</p>';
-          resultsArea.innerHTML = html;
+          if (sliderIdx < allOppHands.length) {
+            setTimeout(processSliderRangeChunk, 0);
+          } else {
+            // Done — render results
+            const heroEq = (totalHeroEq / totalTrials * 100).toFixed(2);
+            const oppEq = (totalOppEq / totalTrials * 100).toFixed(2);
+
+            let html = '<h3>Hold\'em Simulation</h3>';
+            html += '<p>' + allOppHands.length + ' opponent combos in ' + rangeDesc + ' range</p>';
+            if (boardCards.length > 0) html += '<p><strong>Board:</strong> ' + cardsToHTML(boardCards) + '</p>';
+            html += '<table class="results-table"><thead><tr><th>Hand</th><th>Equity</th></tr></thead><tbody>';
+            html += '<tr><td>Hero ' + cardsToHTML(heroHand) + '</td><td><strong>' + heroEq + '%</strong></td></tr>';
+            html += '<tr><td>' + rangeDesc + ' (' + allOppHands.length + ' combos)</td><td><strong>' + oppEq + '%</strong></td></tr>';
+            html += '</tbody></table>';
+            html += '<p style="font-size:11px;color:#888;margin-top:8px;">Range includes ' + rangeHandTypes.length + ' hand types, ' + allOppHands.length + ' specific combos after removing blocked cards.</p>';
+            resultsArea.innerHTML = html;
+          }
         } catch (e) {
           resultsArea.innerHTML = '<p class="error-msg">Error: ' + e.message + '</p>';
         }
-      }, 50);
+      }
+      processSliderRangeChunk();
       return; // Early return — range mode handled
     }
 
@@ -2919,8 +2920,10 @@ async function callClaude() {
       // Parse and run the calculation with live progress
       const progressDiv = document.createElement('div');
       progressDiv.className = 'ai-msg ai-msg-system';
-      progressDiv.innerHTML = '⏳ Running equity calculation...';
-      document.getElementById('ai-chat-area').appendChild(progressDiv);
+      progressDiv.innerHTML = '\u23F3 Running equity calculation...';
+      const chatAreaForProgress = document.getElementById('ai-chat-area');
+      chatAreaForProgress.appendChild(progressDiv);
+      chatAreaForProgress.scrollTop = chatAreaForProgress.scrollHeight;
 
       try {
         const calcJson = JSON.parse(calcMatch[1].trim());
@@ -3517,7 +3520,20 @@ function cardsToHTML(indices) {
 function colorizeCards(text) {
   // Replace card notation like Ah, Ks, Qd, 3c with colored HTML
   // Use lookaround-free approach: match rank+suit not inside HTML tags
-  return text.replace(/([AKQJT2-9])([hdcs])(?=[^a-eg-z]|$)/gi, function(match, rank, suit) {
+  // Also match unicode suit symbols: ♠♥♦♣
+  const UNICODE_SUIT_MAP = { '\u2660': 's', '\u2665': 'h', '\u2666': 'd', '\u2663': 'c' };
+
+  // First pass: rank + unicode suit symbol (e.g., A♠, K♥)
+  text = text.replace(/([AKQJT2-9])([\u2660\u2665\u2666\u2663])/g, function(match, rank, suitChar) {
+    const s = UNICODE_SUIT_MAP[suitChar] || 's';
+    const r = rank.toUpperCase();
+    const sym = SUIT_SYMBOLS[s] || s;
+    const color = SUIT_COLORS[s] || '#333';
+    return '<span style="color:' + color + ';font-weight:bold;">' + r + sym + '</span>';
+  });
+
+  // Second pass: rank + letter suit (e.g., Ah, Ks)
+  text = text.replace(/([AKQJT2-9])([hdcs])(?=[^a-eg-z]|$)/gi, function(match, rank, suit) {
     const s = suit.toLowerCase();
     // Skip if this looks like part of a regular word (e.g., "the", "hands")
     const r = rank.toUpperCase();
@@ -3526,6 +3542,8 @@ function colorizeCards(text) {
     const color = SUIT_COLORS[s] || '#333';
     return '<span style="color:' + color + ';font-weight:bold;">' + r + sym + '</span>';
   });
+
+  return text;
 }
 
 // ============================================================
