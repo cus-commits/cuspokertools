@@ -81,6 +81,13 @@ select { font-family: Arial, sans-serif; cursor: pointer; }
 .filter-item .syntax { color: #888; font-family: monospace; font-size: 11px; margin-left: 12px; }
 .filter-sep { border-top: 1px solid #ddd; margin: 2px 0; }
 .filter-header { padding: 5px 12px; font-size: 10px; font-weight: 700; color: #4a7c59; text-transform: uppercase; letter-spacing: 0.5px; background: #f5f5f5; }
+
+/* Game type tabs */
+.game-tabs { display: flex; gap: 0; margin-bottom: 12px; border: 1px solid #4a7c59; border-radius: 6px; overflow: hidden; }
+.game-tab { flex: 1; padding: 8px 4px; font-size: 13px; font-weight: 600; border: none; background: #f0f0f0; color: #555; cursor: pointer; text-align: center; transition: all 0.15s; }
+.game-tab:not(:last-child) { border-right: 1px solid #4a7c59; }
+.game-tab:hover { background: #e0efe3; }
+.game-tab.active { background: #4a7c59; color: white; }
 .more-hands { color: #2a6e3f; cursor: pointer; font-size: 12px; text-decoration: underline; margin: 6px 0; display: inline-block; }
 .more-hands:hover { color: #1a5e2f; }
 .hand-preview { font-size: 12px; min-height: 16px; padding: 2px 0; margin: -4px 0 2px 66px; }
@@ -336,12 +343,16 @@ table.results-table .equity-cell { font-weight: bold; }
 <div id="page-sim" class="page active">
   <div class="main">
     <div class="left-panel">
-      <label for="game-type">game:</label>
-      <select id="game-type" onchange="onGameTypeChange()">
+      <select id="game-type" style="display:none;">
         <option value="holdem">Hold'em</option>
         <option value="omaha">Omaha (PLO4)</option>
         <option value="doubleboard">Double Board PLO Bomb Pot</option>
       </select>
+      <div class="game-tabs" id="game-tabs">
+        <button class="game-tab" data-game="holdem" onclick="selectGameTab('holdem')">Hold'em</button>
+        <button class="game-tab active" data-game="omaha" onclick="selectGameTab('omaha')">Omaha</button>
+        <button class="game-tab" data-game="doubleboard" onclick="selectGameTab('doubleboard')">DBBP</button>
+      </div>
 
       <div id="board-section-single">
         <label for="board-input">board:</label>
@@ -888,6 +899,11 @@ function clearAll() {
   document.getElementById('left-info').innerHTML = '';
   handCount = 0;
   for (let i = 0; i < 2; i++) addHandSlot();
+}
+function selectGameTab(game) {
+  document.getElementById('game-type').value = game;
+  document.querySelectorAll('.game-tab').forEach(t => t.classList.toggle('active', t.dataset.game === game));
+  onGameTypeChange();
 }
 function onGameTypeChange() {
   const gt = document.getElementById('game-type').value;
