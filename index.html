@@ -80,7 +80,7 @@ select { font-family: Arial, sans-serif; cursor: pointer; }
 .filter-item.has-sub { position: relative; }
 .filter-item.has-sub::after { content: '▸'; margin-left: 8px; color: #999; }
 .filter-sub { display: none; position: absolute; left: 100%; top: 0; background: white; border: 1px solid #aaa; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); min-width: 140px; z-index: 501; }
-.filter-item.has-sub:hover .filter-sub { display: block; }
+.filter-sub.open { display: block; }
 .filter-sub .filter-item { padding: 5px 10px; }
 .more-hands { color: #2a6e3f; cursor: pointer; font-size: 12px; text-decoration: underline; margin: 6px 0; display: inline-block; }
 .more-hands:hover { color: #1a5e2f; }
@@ -325,25 +325,8 @@ table.results-table .equity-cell { font-weight: bold; }
   <div class="subtitle">Poker Equity Simulator</div>
 </div>
 <div class="nav">
-  <a id="nav-home" onclick="showPage('home')">Home</a>
   <a id="nav-sim" class="active" onclick="showPage('sim')">Simulations</a>
   <a id="nav-ai" onclick="showPage('ai')">AI Assistant</a>
-  <a id="nav-about" onclick="showPage('about')">About</a>
-</div>
-
-<!-- Home Page -->
-<div id="page-home" class="page">
-  <div class="home-content">
-    <h2>Welcome to cusPokerTools</h2>
-    <p>A client-side poker equity calculator supporting multiple game types.</p>
-    <p><strong>Supported Games:</strong></p>
-    <ul>
-      <li><strong>Hold'em</strong> &mdash; Texas Hold'em with 2 hole cards</li>
-      <li><strong>Omaha (PLO4)</strong> &mdash; Pot Limit Omaha with 4 hole cards (must use exactly 2)</li>
-      <li><strong>Double Board PLO Bomb Pot</strong> &mdash; PLO with two independent boards; pot split between board winners</li>
-    </ul>
-    <p>Click <strong>Simulations</strong> to get started, or try the <strong>AI Assistant</strong> to describe scenarios in plain English.</p>
-  </div>
 </div>
 
 <!-- Simulation Page -->
@@ -430,18 +413,6 @@ table.results-table .equity-cell { font-weight: bold; }
       </div>
       <div class="ai-history-body" id="ai-history-body" style="display:none;"></div>
     </div>
-  </div>
-</div>
-
-<!-- About Page -->
-<div id="page-about" class="page">
-  <div class="about-content">
-    <h2>About cusPokerTools</h2>
-    <p>cusPokerTools is a client-side poker equity calculator. All computations run entirely in your browser &mdash; no data is sent to any server.</p>
-    <p><strong>Features:</strong></p>
-    <p>Hold'em and Omaha equity with exhaustive enumeration or Monte Carlo simulation. The Double Board PLO Bomb Pot mode calculates equity across two independent boards with scoop percentages.</p>
-    <p><strong>Card notation:</strong> Rank (2-9, T, J, Q, K, A) + suit (h, d, c, s). Example: AhKs = Ace of hearts, King of spades.</p>
-    <p><strong>AI Assistant:</strong> Describe poker scenarios in plain English. The AI will parse your scenario, ask clarifying questions, run equity calculations, and provide analysis. Requires a Claude API key (set in AI Assistant settings).</p>
   </div>
 </div>
 
@@ -702,7 +673,7 @@ function buildFilterMenuHTML(n) {
 
   if (!isHE) {
     // ── PLO FILTERS ──
-    html += '<div class="filter-item has-sub">Contains Pair ▸' +
+    html += '<div class="filter-item has-sub">Contains Pair' +
       '<div class="filter-sub">' +
         'AAKKQQJJTT998877665544332'.match(/.{1}/g).filter((v,i,a) => a.indexOf(v) === i ? true : false).length +
         ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].map(r =>
@@ -711,7 +682,7 @@ function buildFilterMenuHTML(n) {
       '</div></div>';
     // fix the above
     html = '';
-    html += '<div class="filter-item has-sub">Contains Pair ▸' +
+    html += '<div class="filter-item has-sub">Contains Pair' +
       '<div class="filter-sub">' +
         ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].map(r =>
           '<div class="filter-item" onclick="applyGenFilter('+n+',\'pair\',\''+r+'\')">' + r + r + '</div>'
@@ -719,27 +690,27 @@ function buildFilterMenuHTML(n) {
       '</div></div>';
     html += '<div class="filter-item" onclick="applyGenFilter('+n+',\'twopair\')">Two Pair</div>';
     html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item has-sub">Suited ▸' +
+    html += '<div class="filter-item has-sub">Suited' +
       '<div class="filter-sub">' +
         '<div class="filter-item" onclick="applyGenFilter('+n+',\'ds\')">Double Suited</div>' +
         '<div class="filter-item" onclick="applyGenFilter('+n+',\'ss\')">Single Suited</div>' +
         '<div class="filter-item" onclick="applyGenFilter('+n+',\'rainbow\')">Rainbow/Badugi</div>' +
       '</div></div>';
     html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item has-sub">Rundowns ▸' +
+    html += '<div class="filter-item has-sub">Rundowns' +
       '<div class="filter-sub">' +
         '<div class="filter-item" onclick="applyGenFilter('+n+',\'rundown\',\'high\')">High (AKQJ-TJQK)</div>' +
         '<div class="filter-item" onclick="applyGenFilter('+n+',\'rundown\',\'mid\')">Medium (T987-6789)</div>' +
         '<div class="filter-item" onclick="applyGenFilter('+n+',\'rundown\',\'low\')">Low (6543-2345)</div>' +
       '</div></div>';
     html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item has-sub">Top % of Hands ▸' +
+    html += '<div class="filter-item has-sub">Top % of Hands' +
       '<div class="filter-sub">' +
         ['5','10','15','20','25','30','40','50'].map(p =>
           '<div class="filter-item" onclick="applyRangeFilter('+n+',0,'+p+')">Top ' + p + '%</div>'
         ).join('') +
       '</div></div>';
-    html += '<div class="filter-item has-sub">Bottom % of Hands ▸' +
+    html += '<div class="filter-item has-sub">Bottom % of Hands' +
       '<div class="filter-sub">' +
         ['5','10','15','20','25','30','40','50'].map(p =>
           '<div class="filter-item" onclick="applyRangeFilter('+n+','+(100-parseInt(p))+',100)">Bottom ' + p + '%</div>'
@@ -749,26 +720,26 @@ function buildFilterMenuHTML(n) {
     html += '<div class="filter-item" onclick="applyGenFilter('+n+',\'random\')">Random Hand</div>';
   } else {
     // ── HOLD'EM FILTERS ──
-    html += '<div class="filter-item has-sub">Pairs ▸' +
+    html += '<div class="filter-item has-sub">Pairs' +
       '<div class="filter-sub">' +
         ['A','K','Q','J','T','9','8','7','6','5','4','3','2'].map(r =>
           '<div class="filter-item" onclick="applyGenFilter('+n+',\'pair\',\''+r+'\')">' + r + r + '</div>'
         ).join('') +
       '</div></div>';
-    html += '<div class="filter-item has-sub">Broadway ▸' +
+    html += '<div class="filter-item has-sub">Broadway' +
       '<div class="filter-sub">' +
         [['A','K'],['A','Q'],['A','J'],['K','Q'],['K','J'],['Q','J'],['J','T']].map(([a,b]) =>
           '<div class="filter-item" onclick="applyGenFilter('+n+',\'offsuit\',\''+a+b+'\')">' + a + b + 'o</div>'
         ).join('') +
       '</div></div>';
-    html += '<div class="filter-item has-sub">Suited ▸' +
+    html += '<div class="filter-item has-sub">Suited' +
       '<div class="filter-sub">' +
         [['A','K'],['A','Q'],['A','J'],['K','Q'],['K','J'],['Q','J'],['J','T'],['T','9']].map(([a,b]) =>
           '<div class="filter-item" onclick="applyGenFilter('+n+',\'suited\',\''+a+b+'\')">' + a + b + 's</div>'
         ).join('') +
       '</div></div>';
     html += '<div class="filter-sep"></div>';
-    html += '<div class="filter-item has-sub">Top % of Hands ▸' +
+    html += '<div class="filter-item has-sub">Top % of Hands' +
       '<div class="filter-sub">' +
         ['5','10','15','20','25','30','40','50'].map(p =>
           '<div class="filter-item" onclick="applyRangeFilter('+n+',0,'+p+')">Top ' + p + '%</div>'
@@ -781,11 +752,26 @@ function buildFilterMenuHTML(n) {
 }
 
 function toggleFilterMenu(n) {
-  document.querySelectorAll('.filter-menu.open').forEach(m => m.classList.remove('open'));
   const menu = document.getElementById('filter-menu-' + n);
-  if (menu) {
+  const wasOpen = menu && menu.classList.contains('open');
+  document.querySelectorAll('.filter-menu.open').forEach(m => m.classList.remove('open'));
+  document.querySelectorAll('.filter-sub.open').forEach(s => s.classList.remove('open'));
+  if (menu && !wasOpen) {
     menu.innerHTML = buildFilterMenuHTML(n);
-    menu.classList.toggle('open');
+    menu.classList.add('open');
+    // Attach click handlers to submenu parents
+    menu.querySelectorAll('.filter-item.has-sub').forEach(item => {
+      item.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const sub = this.querySelector('.filter-sub');
+        if (sub) {
+          const isOpen = sub.classList.contains('open');
+          // Close all other open subs in this menu
+          menu.querySelectorAll('.filter-sub.open').forEach(s => s.classList.remove('open'));
+          if (!isOpen) sub.classList.add('open');
+        }
+      });
+    });
   }
 }
 
@@ -830,6 +816,7 @@ function applyGenFilter(n, type, param) {
     const inp = document.getElementById('hand-' + n);
     if (inp) inp.value = cardsToStr(hand);
   }
+  document.querySelectorAll('.filter-sub.open').forEach(s => s.classList.remove('open'));
   document.querySelectorAll('.filter-menu.open').forEach(m => m.classList.remove('open'));
 }
 
@@ -850,12 +837,14 @@ function applyRangeFilter(n, lo, hi) {
   if (loEl) loEl.value = lo;
   if (hiEl) hiEl.value = hi;
   updateDualRange(n);
+  document.querySelectorAll('.filter-sub.open').forEach(s => s.classList.remove('open'));
   document.querySelectorAll('.filter-menu.open').forEach(m => m.classList.remove('open'));
 }
 // Close filter menus when clicking outside
 document.addEventListener('click', function(e) {
   if (!e.target.closest('.filter-btn') && !e.target.closest('.filter-menu')) {
     document.querySelectorAll('.filter-menu.open').forEach(m => m.classList.remove('open'));
+    document.querySelectorAll('.filter-sub.open').forEach(s => s.classList.remove('open'));
   }
 });
 
@@ -1201,8 +1190,9 @@ function runSimulation() {
                 const allUsedInner = new Set([...heroHand, ...oppHand, ...bc, ...deadCards]);
                 const rem = []; for (let i = 0; i < 52; i++) { if (!allUsedInner.has(i)) rem.push(i); }
                 const r = isOmaha ? simulateOmaha(matchHands, bc, rem) : simulateHoldem(matchHands, bc, rem);
-                totalHeroEq += r.equity[0] * r.trials;
-                totalOppEq += r.equity[1] * r.trials;
+                const rEq2 = r.equities || r.equity || [];
+                totalHeroEq += (rEq2[0] || 0) * r.trials;
+                totalOppEq += (rEq2[1] || 0) * r.trials;
                 totalTrials += r.trials;
               }
 
@@ -1304,8 +1294,9 @@ function runSimulation() {
             const rem = [];
             for (let i = 0; i < 52; i++) { if (!allUsed.has(i)) rem.push(i); }
             const r = simulateHoldem(matchHands, boardCards, rem);
-            totalHeroEq += r.equity[0] * r.trials;
-            totalOppEq += r.equity[1] * r.trials;
+            const rEq3 = r.equities || r.equity || [];
+            totalHeroEq += (rEq3[0] || 0) * r.trials;
+            totalOppEq += (rEq3[1] || 0) * r.trials;
             totalTrials += r.trials;
           }
 
@@ -1671,9 +1662,10 @@ function displayResults(gameType, hands, handLabels, boardCards, board1Cards, bo
 
     html += '<table class="results-table"><tr><th>Hand</th><th>Equity</th><th>Wins</th><th>Ties</th></tr>';
     for (let i = 0; i < hands.length; i++) {
-      const eq = results.equity[i] * 100;
-      const winPct = (results.wins[i] / results.trials * 100).toFixed(2);
-      const tiePct = (results.ties[i] / results.trials * 100).toFixed(2);
+      const eqDisp = results.equities || results.equity || [];
+      const eq = (eqDisp[i] || 0) * 100;
+      const winPct = ((results.wins[i] || 0) / (results.trials || 1) * 100).toFixed(2);
+      const tiePct = ((results.ties[i] || 0) / (results.trials || 1) * 100).toFixed(2);
       html += '<tr>';
       html += '<td style="font-family:monospace;">' + formatCards(hands[i]) + '</td>';
       html += '<td class="equity-cell">' + eq.toFixed(2) + '%</td>';
@@ -3035,7 +3027,8 @@ async function runAICalculation(calc) {
         const au = new Set([...heroHand, ...oppHand, ...bc]);
         const rem = []; for (let i = 0; i < 52; i++) { if (!au.has(i)) rem.push(i); }
         const r = simFn(mh, bc, rem);
-        totalHeroEq += r.equity[0] * r.trials;
+        const rEq = r.equities || r.equity || [];
+        totalHeroEq += (rEq[0] || 0) * r.trials;
         totalTrials += r.trials;
       }
 
@@ -3117,8 +3110,9 @@ function formatCalcResultsForClaude(calc, results) {
     // Range mode results
     if (results.board1.length > 0) msg += 'Board: ' + cardsToStr(results.board1) + '\n';
     msg += 'Range: ' + results.rangeName + ' (' + results.rangeTypes + ' hand types, ' + results.rangeCombos + ' combos)\n\n';
-    msg += 'Hero (' + cardsToStr(results.allHands[0]) + '): Equity = ' + (results.equities[0] * 100).toFixed(2) + '%\n';
-    msg += results.rangeName + ' range: Equity = ' + (results.equities[1] * 100).toFixed(2) + '%\n';
+    const eqRange = results.equities || results.equity || [];
+    msg += 'Hero (' + cardsToStr(results.allHands[0]) + '): Equity = ' + ((eqRange[0] || 0) * 100).toFixed(2) + '%\n';
+    msg += results.rangeName + ' range: Equity = ' + ((eqRange[1] || 0) * 100).toFixed(2) + '%\n';
     msg += '\nThis is the ACTUAL equity against the ENTIRE ' + results.rangeName + ' range (' + results.rangeCombos + ' opponent hand combos), not a single random hand.\n';
     return msg;
   }
@@ -3139,10 +3133,10 @@ function formatCalcResultsForClaude(calc, results) {
       msg += 'Board2=' + (results.board2Equity[i] * 100).toFixed(2) + '%, ';
       msg += 'Scoop=' + (results.scoopPct[i] * 100).toFixed(2) + '%\n';
     } else {
-      const eqArr = results.equities || results.equity;
-      msg += label + ' (' + handStr + '): Equity=' + (eqArr[i] * 100).toFixed(2) + '%';
-      msg += ', Win=' + (results.wins[i] / results.trials * 100).toFixed(2) + '%';
-      msg += ', Tie=' + (results.ties[i] / results.trials * 100).toFixed(2) + '%\n';
+      const eqArr = results.equities || results.equity || [];
+      msg += label + ' (' + handStr + '): Equity=' + ((eqArr[i] || 0) * 100).toFixed(2) + '%';
+      msg += ', Win=' + ((results.wins[i] || 0) / (results.trials || 1) * 100).toFixed(2) + '%';
+      msg += ', Tie=' + ((results.ties[i] || 0) / (results.trials || 1) * 100).toFixed(2) + '%\n';
     }
   }
 
@@ -3155,9 +3149,10 @@ function renderCalcResultsHTML(calc, results) {
   if (results.isRange) {
     html += '<span style="font-size:11px;color:#888;">vs ' + results.rangeName + ' range (' + results.rangeCombos + ' combos, ' + results.rangeTypes + ' hand types)</span><br><br>';
     if (results.board1.length > 0) html += 'Board: <strong>' + cardsToHTML(results.board1) + '</strong><br><br>';
+    const eqRng = results.equities || results.equity || [];
     html += '<table><tr><th>Hand</th><th>Equity</th></tr>';
-    html += '<tr><td>Hero ' + cardsToHTML(results.allHands[0]) + '</td><td><strong>' + (results.equities[0]*100).toFixed(2) + '%</strong></td></tr>';
-    html += '<tr><td>' + results.rangeName + ' range</td><td><strong>' + (results.equities[1]*100).toFixed(2) + '%</strong></td></tr>';
+    html += '<tr><td>Hero ' + cardsToHTML(results.allHands[0]) + '</td><td><strong>' + ((eqRng[0] || 0)*100).toFixed(2) + '%</strong></td></tr>';
+    html += '<tr><td>' + results.rangeName + ' range</td><td><strong>' + ((eqRng[1] || 0)*100).toFixed(2) + '%</strong></td></tr>';
     html += '</table>';
     html += '<p style="font-size:11px;color:#666;margin-top:6px;">Equity calculated against ALL ' + results.rangeCombos + ' possible opponent holdings in the ' + results.rangeName + ' range.</p>';
     return html;
@@ -3188,10 +3183,10 @@ function renderCalcResultsHTML(calc, results) {
       const label = i < results.heroCount ? '<strong>Hero' + (results.heroCount > 1 ? ' ' + (i+1) : '') + '</strong>' : 'Opp ' + (i - results.heroCount + 1);
       html += '<tr>';
       html += '<td>' + label + ' <span style="font-family:monospace;font-size:11px;">' + cardsToHTML(results.allHands[i]) + '</span></td>';
-      const eqArr = results.equities || results.equity;
-      html += '<td><strong>' + (eqArr[i] * 100).toFixed(1) + '%</strong></td>';
-      html += '<td>' + (results.wins[i] / results.trials * 100).toFixed(1) + '%</td>';
-      html += '<td>' + (results.ties[i] / results.trials * 100).toFixed(1) + '%</td>';
+      const eqArr = results.equities || results.equity || [];
+      html += '<td><strong>' + ((eqArr[i] || 0) * 100).toFixed(1) + '%</strong></td>';
+      html += '<td>' + ((results.wins[i] || 0) / (results.trials || 1) * 100).toFixed(1) + '%</td>';
+      html += '<td>' + ((results.ties[i] || 0) / (results.trials || 1) * 100).toFixed(1) + '%</td>';
       html += '</tr>';
     }
     html += '</table>';
@@ -3320,7 +3315,7 @@ function saveToHistory(query, calcJson, results, analysis) {
       board1Equity: results.board1Equity,
       board2Equity: results.board2Equity,
       scoopPct: results.scoopPct,
-      equity: results.equity,
+      equity: results.equities || results.equity,
       wins: results.wins,
       ties: results.ties
     },
