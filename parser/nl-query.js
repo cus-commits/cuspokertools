@@ -414,6 +414,65 @@ function validateQuery(query) {
 }
 
 /* ================================================================== */
+/* Result narration — MATH-FIRST, terse. See LLM_OUTPUT_CONTRACT.md.   */
+/* ================================================================== */
+
+// Deterministically render the SYNTAX + RESULT block. The app prints THIS,
+// not the LLM, so the syntax + combo counts + equity are always present,
+// exact, and never hallucinated or text-mangled. `result` shape:
+//   { players:[{label, range, equity, combos, exact, trials}], board, dead }
+function formatResultBlock(query, result) {
+  var pad = function (s, n) { s = String(s); while (s.length < n) s += ' '; return s; };
+  var lines = ['SYNTAX'];
+  var players = (result && result.players) || (query && query.players) || [];
+  for (var i = 0; i < players.length; i++) {
+    var pl = players[i];
+    var role = i === 0 ? 'hero' : 'villain';
+    var gloss = pl.gloss ? '   (' + pl.gloss + ')' : '';
+    lines.push('  ' + pad(role, 8) + ' ' + (pl.range || '') + gloss);
+  }
+  var board = (query && (query.board || query.board1)) || (result && result.board) || '';
+  lines.push('  ' + pad('board', 8) + ' ' + (board || '—'));
+  var dead = (query && query.dead) || (result && result.dead) || '';
+  lines.push('  ' + pad('dead', 8) + ' ' + (dead || '—'));
+  lines.push('');
+  lines.push('RESULT');
+  for (var j = 0; j < players.length; j++) {
+    var p = players[j];
+    if (p.combos !== undefined && j > 0) {
+      var how = p.exact ? 'exact' : ('sampled, ' + (p.trials || 0) + ' trials');
+      lines.push('  ' + pad('villain range', 16) + ' ' + Number(p.combos).toLocaleString() + ' combos (' + how + ')');
+    }
+  }
+  for (var k = 0; k < players.length; k++) {
+    var pe = players[k];
+    var lbl = (k === 0 ? 'hero' : 'villain') + ' equity';
+    if (pe.equity !== undefined) lines.push('  ' + pad(lbl, 16) + ' ' + (pe.equity).toFixed(1) + '%');
+  }
+  return lines.join('\n');
+}
+
+// The prompt for the OPTIONAL second LLM call. The math is already rendered by
+// formatResultBlock; the model adds at most a 2-line factual note. No filler.
+var OUTPUT_CONTRACT = [
+  'You are a poker EQUITY CALCULATOR, not a coach. The math is already shown to',
+  'the user (syntax, combo count, equities). Your ONLY job is an OPTIONAL note of',
+  'AT MOST 2 short lines stating what is factually notable (what beats the hero,',
+  'key cards, why the number is what it is).',
+  'HARD RULES:',
+  ' - Do NOT restate the equity numbers or the syntax (already shown).',
+  ' - Do NOT cheerlead or praise ("crushing it", "great spot", "you did right", no emojis).',
+  ' - Do NOT give strategy / bet-sizing / "you should..." unless the user explicitly asked.',
+  ' - No multi-section essays, no "Bottom Line", no headers. Plain facts only.',
+  ' - If nothing useful to add, output nothing.'
+].join('\n');
+
+function buildResultPrompt(query, result) {
+  return OUTPUT_CONTRACT + '\n\nComputed result:\n' + formatResultBlock(query, result) +
+    '\n\nYour optional <=2 line factual note (or empty):';
+}
+
+/* ================================================================== */
 /* Exports                                                            */
 /* ================================================================== */
 var API = {
@@ -422,6 +481,9 @@ var API = {
   buildSystemPrompt: buildSystemPrompt,
   parseLLMResponse: parseLLMResponse,
   validateQuery: validateQuery,
+  formatResultBlock: formatResultBlock,
+  buildResultPrompt: buildResultPrompt,
+  OUTPUT_CONTRACT: OUTPUT_CONTRACT,
   _splitCards: splitCards
 };
 
