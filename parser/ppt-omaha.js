@@ -193,7 +193,7 @@ function parse(str) {
     while (!eof() && peek() === ',') {
       pos++; // consume ,
       var right = parseTerm();
-      var L = left, R = right;
+      let L = left, R = right; // let (not var) so each closure captures its own L/R
       left = function (f) { return L(f) || R(f); }; // union
       skipWs();
     }
@@ -209,7 +209,7 @@ function parse(str) {
       var op = peek();
       pos++; // consume op
       var right = parseFactor();
-      var L = left, R = right;
+      let L = left, R = right; // let (not var) so each closure captures its own L/R
       if (op === ':') left = function (f) { return L(f) && R(f); };       // intersection
       else            left = function (f) { return L(f) && !R(f); };      // difference
       skipWs();
