@@ -418,6 +418,7 @@ function interpretToken(tok, ctx) {
     tok = tok.slice(0, atIdx).trim();
     if (!/^\d+(\.\d+)?$/.test(wstr)) throw new Error('Invalid weight in "' + original + '"');
     weight = parseFloat(wstr);
+    if (weight > 100) throw new Error('Weight out of range (must be 0..100) in "' + original + '"');
     ctx.weighted = true;
   }
 

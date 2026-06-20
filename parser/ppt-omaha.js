@@ -258,7 +258,9 @@ function parsePrimary(tok) {
   var pct = tok.match(/^(\d+(?:\.\d+)?)%(?:-(\d+(?:\.\d+)?)%?)?$/);
   if (pct) {
     var lo = parseFloat(pct[1]);
-    var hi = pct[2] !== undefined ? parseFloat(pct[2]) : 0;
+    // null (not 0) is the "single-value form" sentinel so that a literal
+    // "0%" (top 0% = empty) is not mistaken for the single-value form.
+    var hi = pct[2] !== undefined ? parseFloat(pct[2]) : null;
     return percentPredicate(lo, hi);
   }
 
@@ -435,13 +437,24 @@ function buildScoreDistribution() {
 }
 
 function percentPredicate(lo, hi) {
-  // top lo% .. top hi% band. If hi is 0/absent, band = top lo%.
+  // top lo% .. top hi% band. If hi is null (single-value form "15%"),
+  // band = top 0..lo%.  A literal "0%" (hi===0) is a real empty top-0% band.
   var dist = buildScoreDistribution();
   var N = dist.length;
-  if (hi === 0) { hi = lo; lo = 0; }       // "15%" -> top 0..15%
-  // top X% means scores >= the (100-X) percentile threshold.
-  var hiThresh = dist[Math.floor((1 - hi / 100) * N)];      // boundary for the wider (hi%) cut
-  var loThresh = (lo > 0) ? dist[Math.floor((1 - lo / 100) * N)] : Infinity;
+  if (hi === null) { hi = lo; lo = 0; }    // "15%" -> top 0..15%
+  // Empty band (hi <= 0, e.g. "0%" or "0%-0%") selects nothing.
+  if (hi <= 0) return function () { return false; };
+  // top X% means scores >= the (100-X) percentile threshold. Clamp the index
+  // into [0, N-1] so 100%+ doesn't read dist[N] (undefined -> matches all by
+  // accident) and so the threshold is always a real score in the distribution.
+  function threshAt(pct) {
+    var i = Math.floor((1 - pct / 100) * N);
+    if (i < 0) i = 0;
+    if (i > N - 1) i = N - 1;
+    return dist[i];
+  }
+  var hiThresh = threshAt(hi);             // boundary for the wider (hi%) cut
+  var loThresh = (lo > 0) ? threshAt(lo) : Infinity;
   // band: score >= hiThresh (inside top hi%) AND score < loThresh (outside top lo%)
   return function (f) {
     var sc = handScore(f);

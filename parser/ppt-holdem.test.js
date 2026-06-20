@@ -181,6 +181,8 @@ throws('Unbalanced bracket', '[A-J][2-5');
 throws('Trailing junk', 'AA$$$');
 throws('Same card twice', 'AsAs');
 throws('Bad weight', 'AA@xyz');
+throws('Weight over 100', 'AA@200');   // weights are 0..100 per the contract
+count('Weight exactly 100 ok', 'AA@100', 6);
 throws('Bad percent', '150%');
 throws('Lone operator', ',');
 throws('Dangling comma', 'AA,');

@@ -560,6 +560,22 @@ eq('$Z (all in small 65432, 20 cards) = C(20,4)=4845', countMatchesFast('$Z'), c
   eq('15%-30% band disjoint from top-15%', overlap, 0);
 })();
 
+/* Regression: percentage boundary cases.
+ * "0%" = top 0% = the EMPTY set (NOT the whole space). Earlier the single-
+ * value form used 0 as its "no hi" sentinel, so a literal "0%" collapsed to
+ * a band with an out-of-range threshold and matched ALL 270725 hands.
+ * Likewise "0%-0%" and "50%-50%" are empty bands, and "100%"/"200%" select
+ * the whole space (clamped). */
+(function () {
+  eq('0% (top 0%) selects nothing', countMatchesFast('0%'), 0);
+  eq('0%-0% (empty band) selects nothing', countMatchesFast('0%-0%'), 0);
+  eq('50%-50% (empty band) selects nothing', countMatchesFast('50%-50%'), 0);
+  eq('100% selects the whole space', countMatchesFast('100%'), TOTAL);
+  eq('200% (over 100%) clamps to whole space', countMatchesFast('200%'), TOTAL);
+  // top-50% and the explicit two-value form "0%-50%" must agree.
+  eq('0%-50% equals 50%', countMatchesFast('0%-50%'), countMatchesFast('50%'));
+})();
+
 /* ----------------------------------------------------------------
  * 11. Dead cards.
  * ---------------------------------------------------------------- */

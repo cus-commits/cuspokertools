@@ -124,6 +124,23 @@
       }
     }
     rec(0);
+    // Dedupe by canonical 4-card SET. Symmetric patterns (e.g. "abab" for a
+    // double-paired hand like AATT) generate each unordered 4-card hand once
+    // per letter-permutation that maps to the same suit multiset, so the raw
+    // injection enumeration double-counts them. Two ordered suit-assignments
+    // that yield the same set of 4 concrete cards are the SAME Omaha hand and
+    // must be counted once (this is what comboCount in the rankings reflects).
+    if (out.length > 1) {
+      const seen = new Set();
+      const deduped = [];
+      for (const hand of out) {
+        const key = hand.slice().sort((a, b) => a - b).join(',');
+        if (seen.has(key)) continue;
+        seen.add(key);
+        deduped.push(hand);
+      }
+      return deduped;
+    }
     return out;
   }
 
@@ -139,17 +156,21 @@
     const loCombos = (lo / 100) * grandTotal;
     const hiCombos = (hi / 100) * grandTotal;
 
-    // Walk best->worst accumulating combo weight. A class is INCLUDED if its
-    // combo interval [cum, cum+comboCount) overlaps [loCombos, hiCombos).
+    // Walk best->worst accumulating combo weight. Each class is assigned to
+    // exactly ONE band by its cumulative START position: a class belongs to
+    // [lo,hi] iff loCombos <= start < hiCombos. This makes adjacent bands a
+    // clean PARTITION (no class straddling a boundary lands in both bands) and
+    // keeps 0-100 == the whole space. (The previous "interval overlaps band"
+    // rule double-counted any class straddling a band edge, so 0-10 and 10-20
+    // shared the straddling class.)
     const classes = [];
     let cum = 0;
     let totalCombos = 0;
     for (const c of ranking) {
       const start = cum;
-      const end = cum + c.comboCount;
-      cum = end;
-      if (end <= loCombos) continue;     // entirely before the band
-      if (start >= hiCombos) break;      // entirely after the band (sorted) -> done
+      cum += c.comboCount;
+      if (start < loCombos) continue;    // class starts before the band -> earlier band
+      if (start >= hiCombos) break;      // class starts at/after band end (sorted) -> done
       classes.push(c);
       totalCombos += c.comboCount;
     }
