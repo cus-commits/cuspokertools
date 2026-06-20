@@ -451,31 +451,41 @@ function validateQuery(query) {
 //   { players:[{label, range, equity, combos, exact, trials}], board, dead }
 function formatResultBlock(query, result) {
   var pad = function (s, n) { s = String(s); while (s.length < n) s += ' '; return s; };
-  var lines = ['SYNTAX'];
   var players = (result && result.players) || (query && query.players) || [];
-  for (var i = 0; i < players.length; i++) {
-    var pl = players[i];
-    var role = i === 0 ? 'hero' : 'villain';
-    var gloss = pl.gloss ? '   (' + pl.gloss + ')' : '';
-    lines.push('  ' + pad(role, 8) + ' ' + (pl.range || '') + gloss);
-  }
   var board = (query && (query.board || query.board1)) || (result && result.board) || '';
-  lines.push('  ' + pad('board', 8) + ' ' + (board || '—'));
+  var board2 = (query && query.board2) || (result && result.board2) || '';
   var dead = (query && query.dead) || (result && result.dead) || '';
-  lines.push('  ' + pad('dead', 8) + ' ' + (dead || '—'));
-  lines.push('');
-  lines.push('RESULT');
-  for (var j = 0; j < players.length; j++) {
-    var p = players[j];
-    if (p.combos !== undefined && j > 0) {
-      var how = p.exact ? 'exact' : ('sampled, ' + (p.trials || 0) + ' trials');
-      lines.push('  ' + pad('villain range', 16) + ' ' + Number(p.combos).toLocaleString() + ' combos (' + how + ')');
-    }
+  var game = (query && query.game) || (result && result.game) || '';
+
+  // tag P1 as hero, others P2..Pn; pad the tag column to the widest tag.
+  var tag = function (i) { return 'P' + (i + 1) + (i === 0 ? ' hero' : ''); };
+  var tagW = 0;
+  for (var ti = 0; ti < players.length; ti++) tagW = Math.max(tagW, tag(ti).length);
+  tagW = Math.max(tagW, 7);
+
+  // --- EXACT SYNTAX (copy-pasteable; APP_RULES.md rule 1) -------------------
+  var lines = ['EXACT SYNTAX  (copy to verify in ProPokerTools)'];
+  if (game) lines.push('  ' + pad('game', tagW) + '  ' + game);
+  for (var i = 0; i < players.length; i++) {
+    var gloss = players[i].gloss ? '   (' + players[i].gloss + ')' : '';
+    lines.push('  ' + pad(tag(i), tagW) + '  ' + (players[i].range || '') + gloss);
   }
+  lines.push('  ' + pad('board', tagW) + '  ' + (board || '—'));
+  if (board2) lines.push('  ' + pad('board2', tagW) + '  ' + board2);
+  lines.push('  ' + pad('dead', tagW) + '  ' + (dead || '—'));
+  lines.push('');
+
+  // --- RESULT: one row per player, exact range + its equity + combos --------
+  lines.push('RESULT');
   for (var k = 0; k < players.length; k++) {
-    var pe = players[k];
-    var lbl = (k === 0 ? 'hero' : 'villain') + ' equity';
-    if (pe.equity !== undefined) lines.push('  ' + pad(lbl, 16) + ' ' + (pe.equity).toFixed(1) + '%');
+    var p = players[k];
+    var eq = (p.equity !== undefined && p.equity !== null) ? (Number(p.equity).toFixed(1) + '%') : '—';
+    var extra = '';
+    if (p.combos !== undefined) {
+      var how = p.exact ? 'exact' : ('sampled ' + (p.trials ? (p.trials >= 1000 ? Math.round(p.trials / 1000) + 'k' : p.trials) : '') + ' trials');
+      extra = '   (' + Number(p.combos).toLocaleString() + ' combos, ' + how + ')';
+    }
+    lines.push('  ' + pad(tag(k), tagW) + '  ' + pad((p.range || ''), 12) + '  ' + pad(eq, 7) + extra);
   }
   // Deterministic board texture — COMPUTED from the cards, never guessed. This
   // replaces the old LLM "note" that hallucinated draws (e.g. flushes on a
