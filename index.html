@@ -4323,15 +4323,19 @@ function colorizeCards(text) {
     return '<span style="color:' + color + ';font-weight:bold;">' + r + sym + '</span>';
   });
 
-  // Second pass: rank + letter suit (e.g., Ah, Ks)
-  text = text.replace(/([AKQJT2-9])([hdcs])(?=[^a-eg-z]|$)/gi, function(match, rank, suit) {
-    const s = suit.toLowerCase();
-    // Skip if this looks like part of a regular word (e.g., "the", "hands")
-    const r = rank.toUpperCase();
-    if ('HDCS'.includes(r) && 'HDCS'.includes(s.toUpperCase())) return match; // avoid false matches
-    const sym = SUIT_SYMBOLS[s] || s;
-    const color = SUIT_COLORS[s] || '#333';
-    return '<span style="color:' + color + ';font-weight:bold;">' + r + sym + '</span>';
+  // Second pass: rank + letter suit (e.g., Ah, Ks), but ONLY for real card tokens.
+  // Match one-or-more consecutive rank+suit pairs as a card block, bounded by
+  // non-card characters on both sides, so ordinary English bigrams (the "ts" in
+  // "sets", "th" in "with", "ad" in "ahead") and HTML attribute text are never touched.
+  text = text.replace(/(^|[^A-Za-z0-9♠♥♦♣])((?:[AKQJT2-9][hdcs]){1,})(?![A-Za-z0-9])/g, function(match, pre, body) {
+    const cards = body.replace(/([AKQJT2-9])([hdcs])/g, function(_, rank, suit) {
+      const s = suit.toLowerCase();
+      const r = rank.toUpperCase();
+      const sym = SUIT_SYMBOLS[s] || s;
+      const color = SUIT_COLORS[s] || '#333';
+      return '<span style="color:' + color + ';font-weight:bold;">' + r + sym + '</span>';
+    });
+    return pre + cards;
   });
 
   return text;
