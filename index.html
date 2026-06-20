@@ -4040,26 +4040,9 @@ async function callClaude() {
     area.appendChild(wrap);
     area.scrollTop = area.scrollHeight;
 
-    // 4. OPTIONAL single Claude call for a <=2-line factual note (no filler).
-    try {
-      const notePrompt = window.NLQuery.buildResultPrompt(query, result);
-      showTypingIndicator();
-      const note = (await anthropicComplete(
-        [{ role: 'user', content: notePrompt }], ''
-      )).trim();
-      removeTypingIndicator();
-      if (note) {
-        const noteDiv = document.createElement('div');
-        noteDiv.className = 'ai-msg ai-msg-ai';
-        noteDiv.innerHTML = colorizeCards(note.replace(/\n/g, '<br>'));
-        area.appendChild(noteDiv);
-        area.scrollTop = area.scrollHeight;
-        aiConversation.push({ role: 'assistant', content: note });
-      }
-    } catch (noteErr) {
-      removeTypingIndicator();
-      /* the note is optional; the math block is the source of truth */
-    }
+    // 4. (Removed) No LLM commentary — the model can't see board texture and
+    //    hallucinates (e.g. inventing "flush draws" on a rainbow board). The
+    //    deterministic math block + computed board facts are the whole output.
 
     // 5. Save to history (best-effort).
     try {

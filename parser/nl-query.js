@@ -454,6 +454,20 @@ function formatResultBlock(query, result) {
     var lbl = (k === 0 ? 'hero' : 'villain') + ' equity';
     if (pe.equity !== undefined) lines.push('  ' + pad(lbl, 16) + ' ' + (pe.equity).toFixed(1) + '%');
   }
+  // Deterministic board texture — COMPUTED from the cards, never guessed. This
+  // replaces the old LLM "note" that hallucinated draws (e.g. flushes on a
+  // rainbow board). Facts only: suit texture + paired/unpaired.
+  if (board && board.length >= 6) {
+    var bc = board.match(/../g) || [];
+    var sct = {}, rct = {};
+    for (var bi = 0; bi < bc.length; bi++) { sct[bc[bi][1]] = (sct[bc[bi][1]] || 0) + 1; rct[bc[bi][0]] = (rct[bc[bi][0]] || 0) + 1; }
+    var maxSuit = 0; for (var sk in sct) if (sct[sk] > maxSuit) maxSuit = sct[sk];
+    var suitTex = maxSuit >= 3 ? 'flush possible' : (maxSuit === 2 ? 'two-tone (flush draws live)' : 'rainbow — no flush draws');
+    var paired = false; for (var rk in rct) if (rct[rk] >= 2) paired = true;
+    lines.push('');
+    lines.push('BOARD');
+    lines.push('  ' + pad('texture', 16) + ' ' + suitTex + (paired ? ', paired' : ', unpaired'));
+  }
   return lines.join('\n');
 }
 
