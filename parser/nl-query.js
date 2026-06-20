@@ -157,6 +157,9 @@ function buildSystemPrompt(opts) {
 'You translate plain-English poker equity questions into a STRUCTURED QUERY for the cusPokerTools engine.',
 '',
 'OUTPUT CONTRACT',
+'Output ONLY the marker block below and NOTHING ELSE. No preamble, no explanation,',
+'no "Great question", no reasoning, no text before or after. Your ENTIRE reply must',
+'be exactly the block. (Explaining instead of emitting the block is the #1 failure.)',
 'Emit exactly one structured query wrapped in markers, on its own line:',
 '  |||CALC|||{ ...json... }|||END|||',
 'The JSON MUST match this schema:',
@@ -183,7 +186,8 @@ function buildSystemPrompt(opts) {
 '  Hold\'em-specific:',
 '    - two ranks: AK, AKs, AKo  ; kicker-plus: AJs+, AJo+, AK+ ; suit alias: AK$s, AK$o',
 '    - class dashes: A2s-A5s, K8s-K5s, 98s-76s (connectors) ; suit-specific: AhKh-AhTh',
-'    - specific combo: AsKh ; single card present: As ; high-card presence: Q+ ; weight: AKs@50',
+'    - specific combo: AsKh ; single card present: As ; weight: AKs@50',
+'    - ANY hand containing a rank: A (any ace), K (any king), Ax/A* (any ace) ; high-card presence Q-or-better: Q+',
 '    - suitedness words: xx (suited), xy (offsuit) ; brackets: [A-J][T] , A[2-5]',
 '  Omaha-specific (4-card):',
 '    - suit groups: $ds (double-suited), $ss (single-suited), $ns (rainbow), wxyz (rainbow)',
@@ -226,15 +230,20 @@ function parseLLMResponse(text) {
 
   var jsonStr = null;
 
-  // a) |||CALC|||{...}|||END|||
-  var calc = text.match(/\|\|\|CALC\|\|\|([\s\S]*?)\|\|\|END\|\|\|/);
-  if (calc) {
-    jsonStr = calc[1].trim();
+  // a) |||CALC|||{...}|||END||| — take the LAST block: a model that reconsiders
+  //    ("Wait, let me redo that...") emits several; its final block is the answer.
+  var calcRe = /\|\|\|CALC\|\|\|([\s\S]*?)\|\|\|END\|\|\|/g;
+  var calcAll = [], cm;
+  while ((cm = calcRe.exec(text)) !== null) calcAll.push(cm[1]);
+  if (calcAll.length) {
+    jsonStr = calcAll[calcAll.length - 1].trim();
   } else {
-    // b) fenced ```json ... ``` or ``` ... ```
-    var fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (fence) {
-      jsonStr = fence[1].trim();
+    // b) fenced ```json ... ``` or ``` ... ``` — also take the last fenced block.
+    var fenceRe = /```(?:json)?\s*([\s\S]*?)```/gi;
+    var fenceAll = [], fm;
+    while ((fm = fenceRe.exec(text)) !== null) fenceAll.push(fm[1]);
+    if (fenceAll.length) {
+      jsonStr = fenceAll[fenceAll.length - 1].trim();
     } else {
       // c) a bare {...} object somewhere in the text (first balanced-ish object)
       var brace = text.match(/\{[\s\S]*\}/);

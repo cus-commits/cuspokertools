@@ -836,6 +836,20 @@ function interpretRankPairToken(tok, original) {
     return rs;
   }
 
+  // "any hand containing rank R": a bare single rank ("A", "K"), or rank + a
+  // wildcard kicker ("A*", "*A", "Ax", "xA"). The colloquial "any ace"/"any king".
+  // (A+ only works at the top of the deck; "any king" has no plus form since K+
+  // wrongly includes aces — so this fills a real gap.)
+  var anyRank = body.match(/^([2-9TJQKA])(?:\*|x)?$/i) || body.match(/^(?:\*|x)([2-9TJQKA])$/i);
+  if (anyRank && !hasPlus) {
+    var rv = rankVal(anyRank[1]);
+    var rsAny = newSet();
+    for (var ca = 0; ca < 52; ca++) for (var cb = ca + 1; cb < 52; cb++) {
+      if (cardRank(ca) === rv || cardRank(cb) === rv) addCombo(rsAny, ca, cb);
+    }
+    return rsAny;
+  }
+
   // two ranks with optional suitedness: AK / AKs / AKo / AK$s / AK$o
   var m = body.match(/^([2-9TJQKA])([2-9TJQKA])(\$?[so])?$/i);
   if (!m) throw new Error('Unrecognized range token: "' + original + '"');
