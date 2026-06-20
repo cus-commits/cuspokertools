@@ -229,6 +229,11 @@ table.results-table .equity-cell { font-weight: bold; }
   align-self: center; background: #fff8e1; color: #795548; font-size: 12px;
   padding: 6px 12px; border-radius: 6px; border: 1px solid #ffe0b2;
 }
+.ai-result-block {
+  margin: 0; font-family: 'Courier New', monospace; font-size: 12.5px;
+  line-height: 1.45; white-space: pre; overflow-x: auto; color: #1b1b1b;
+  background: transparent;
+}
 .ai-msg-ai table { margin: 8px 0; border-collapse: collapse; width: 100%; font-size: 12px; }
 .ai-msg-ai table th { background: #5a8c69; color: white; padding: 5px 8px; text-align: left; border: 1px solid #4a7c59; }
 .ai-msg-ai table td { padding: 4px 8px; border: 1px solid #ccc; }
@@ -461,6 +466,14 @@ table.results-table .equity-cell { font-weight: bold; }
     </div>
   </div>
 </div>
+
+<!-- New PPT engine modules (classic scripts, load order matters:
+     eval -> holdem -> omaha -> percent (needs eval) -> nl-query (needs holdem/omaha)). -->
+<script src="parser/ppt-eval.js"></script>
+<script src="parser/ppt-holdem.js"></script>
+<script src="parser/ppt-omaha.js"></script>
+<script src="parser/ppt-percent.js"></script>
+<script src="parser/nl-query.js"></script>
 
 <script>
 // ============================================================
@@ -3465,7 +3478,252 @@ function generateRangedPLOHand(usedCards, pct, direction) {
 let aiConversation = []; // {role, content} messages for Claude API
 let aiSending = false;
 
-const AI_SYSTEM_PROMPT = `You are an expert poker analyst. You INFER everything possible and RUN CALCULATIONS IMMEDIATELY. You almost NEVER ask clarifying questions — just figure it out and run it.
+// ============================================================
+// NEW poker engine wiring (parser/ modules). The AI tab routes
+// EXCLUSIVELY through these — never through the app's hdcs parseCards.
+// Card model here is cdhs: idx = rank*4 + suit, 'cdhs'.indexOf(suit).
+// ============================================================
+const PPT_RANKS = '23456789TJQKA';
+function pptCardToIdx(s) {
+  // s like "As", "Td". Returns 0..51 in the modules' cdhs model.
+  const r = PPT_RANKS.indexOf(s[0].toUpperCase());
+  const u = 'cdhs'.indexOf(s[1].toLowerCase());
+  if (r < 0 || u < 0) throw new Error('Bad card "' + s + '"');
+  return r * 4 + u;
+}
+function pptSplitCards(str) {
+  // "2s3c4d" -> ["2s","3c","4d"]; handles "10x" -> "Tx". Ignores whitespace.
+  if (!str) return [];
+  const s = String(str).replace(/\s+/g, '');
+  const out = [];
+  for (let i = 0; i < s.length;) {
+    let rank, suit;
+    if (s.slice(i, i + 2) === '10') { rank = 'T'; suit = s[i + 2]; i += 3; }
+    else { rank = s[i]; suit = s[i + 1]; i += 2; }
+    if (suit === undefined) throw new Error('Dangling card in "' + str + '"');
+    out.push(rank.toUpperCase() + suit.toLowerCase());
+  }
+  return out;
+}
+
+// Rankings for the percentage engine. holdem loads eagerly at init; omaha
+// (1.2MB) loads lazily on first omaha-% query.
+const pptRankings = { holdem: null, omaha: null };
+window.pptRankings = pptRankings; // observable for diagnostics/tests
+let _omahaRankingPromise = null;
+async function ensureHoldemRanking() {
+  if (pptRankings.holdem) return;
+  const res = await fetch('parser/holdem-ranking.json');
+  if (!res.ok) throw new Error('Failed to load holdem-ranking.json (' + res.status + ')');
+  pptRankings.holdem = await res.json();
+  if (window.PPTPercent) window.PPTPercent.setRankings({ holdem: pptRankings.holdem, omaha: pptRankings.omaha });
+}
+function ensureOmahaRanking(statusCb) {
+  if (pptRankings.omaha) return Promise.resolve();
+  if (_omahaRankingPromise) return _omahaRankingPromise;
+  if (statusCb) statusCb('Loading Omaha ranking (1.2 MB)…');
+  _omahaRankingPromise = fetch('parser/omaha-ranking.json')
+    .then(res => { if (!res.ok) throw new Error('Failed to load omaha-ranking.json (' + res.status + ')'); return res.json(); })
+    .then(json => {
+      pptRankings.omaha = json;
+      if (window.PPTPercent) window.PPTPercent.setRankings({ holdem: pptRankings.holdem, omaha: pptRankings.omaha });
+    });
+  return _omahaRankingPromise;
+}
+
+function isPercentToken(range) {
+  // pure "20%" or "10%-30%" tokens (optional whitespace).
+  return /^\s*\d+(?:\.\d+)?%\s*(?:-\s*\d+(?:\.\d+)?%\s*)?$/.test(String(range || ''));
+}
+function parsePercentBand(range) {
+  const nums = String(range).match(/\d+(?:\.\d+)?/g).map(Number);
+  if (nums.length === 1) return { lo: 0, hi: nums[0] };
+  return { lo: Math.min(nums[0], nums[1]), hi: Math.max(nums[0], nums[1]) };
+}
+
+// computeEquity(query, opts) -> { players:[{range,equity,combos,exact,trials}], board, dead }
+//   query: { game:'holdem'|'omaha', board?, dead?, players:[{range},...] }
+//   opts:  { trials, onStatus(msg), onProgress(done,total) }
+// Pooled Monte Carlo: each trial samples one hand per villain from its own set
+// (rejection-sampling card collisions), deals the remaining board, evaluates.
+async function computeEquity(query, opts) {
+  opts = opts || {};
+  const game = query.game;
+  if (game !== 'holdem' && game !== 'omaha') {
+    throw new Error('Engine supports holdem and omaha (got ' + JSON.stringify(game) + ')');
+  }
+  const onStatus = opts.onStatus || function () {};
+  const onProgress = opts.onProgress || function () {};
+  const TRIALS = opts.trials || 150000;
+
+  const boardStrs = pptSplitCards(query.board || '');
+  const deadStrs = pptSplitCards(query.dead || '');
+  const boardIdx = boardStrs.map(pptCardToIdx);
+  const deadIdx = deadStrs.map(pptCardToIdx);
+  const evalFn = game === 'omaha' ? window.PPTEval.evalOmaha : window.PPTEval.eval7holdem;
+  const holeSize = game === 'omaha' ? 4 : 2;
+
+  const players = query.players || [];
+  if (players.length < 2) throw new Error('Need at least 2 players (hero + 1 villain)');
+
+  // Hero must be a single concrete hand (the modules sample only villains).
+  const heroRangeStr = players[0].range;
+  let heroIdx;
+  {
+    const heroStrs = pptSplitCards(heroRangeStr);
+    if (heroStrs.length !== holeSize || !/^([2-9TJQKA][cdhs]){1,}$/i.test(heroStrs.join(''))) {
+      // hero given as a non-concrete range -> sample it too (treat like a villain set #0)
+      heroIdx = null;
+    } else {
+      heroIdx = heroStrs.map(pptCardToIdx);
+    }
+  }
+
+  // Build a sampler for each player range:
+  //   { kind:'concrete', hand:[idx...] }  (hero only)
+  //   { kind:'set', list:[[idx...]], combos, exact }
+  // Blockers for villain range enumeration = dead + board + hero's concrete
+  // cards (a villain cannot hold a card the hero/board/dead already holds, so
+  // the reported combo count reflects what is genuinely available).
+  const heroBlockerStrs = (heroIdx === null) ? [] : pptSplitCards(heroRangeStr);
+  const deadBlockerStrs = deadStrs.concat(boardStrs).concat(heroBlockerStrs); // for omaha enumerate / holdem parseRange dead
+
+  function buildSet(rangeStr) {
+    if (isPercentToken(rangeStr)) {
+      const band = parsePercentBand(rangeStr);
+      const pr = window.PPTPercent.percentRange(game, band.lo, band.hi);
+      const flat = pr._ensureFlat(); // array of idx hands
+      return { kind: 'set', list: flat, combos: pr.totalCombos, exact: false };
+    }
+    if (game === 'holdem') {
+      const r = window.PPTHoldem.parseRange(rangeStr, { dead: deadBlockerStrs });
+      const list = r.combos.map(pair => pair.map(pptCardToIdx));
+      return { kind: 'set', list, combos: r.count, exact: true };
+    } else {
+      const om = window.PPTOmaha.parseRange(rangeStr);
+      const en = om.enumerate({ max: 300000, dead: deadBlockerStrs });
+      const list = en.combos.map(q => q.map(pptCardToIdx));
+      // exact when the whole matching set was returned (not random-sampled).
+      return { kind: 'set', list, combos: en.total, exact: !en.sampled };
+    }
+  }
+
+  // Lazy-load omaha ranking if any player is a percentage token in omaha.
+  if (game === 'omaha') {
+    const needsOmahaRank = players.some(p => isPercentToken(p.range)) || (heroIdx === null && isPercentToken(heroRangeStr));
+    if (needsOmahaRank) await ensureOmahaRanking(onStatus);
+  }
+  if (game === 'holdem') await ensureHoldemRanking();
+
+  // playerSets[0] is hero's set if hero is non-concrete; else hero is fixed.
+  const villainSets = [];
+  const heroSet = (heroIdx === null) ? buildSet(heroRangeStr) : null;
+  for (let i = 1; i < players.length; i++) villainSets.push(buildSet(players[i].range));
+
+  // Sanity: every set must have at least one legal hand.
+  if (heroSet && heroSet.list.length === 0) throw new Error('Hero range "' + heroRangeStr + '" has no legal combos');
+  villainSets.forEach((s, i) => { if (s.list.length === 0) throw new Error('Range "' + players[i + 1].range + '" has no legal combos'); });
+
+  const rng = Math.random;
+  function sampleFrom(set, blocked) {
+    for (let a = 0; a < 300; a++) {
+      const cand = set.list[Math.min(set.list.length - 1, Math.floor(rng() * set.list.length))];
+      let clash = false;
+      for (let k = 0; k < cand.length; k++) { if (blocked.has(cand[k])) { clash = true; break; } }
+      if (!clash) return cand;
+    }
+    return null;
+  }
+
+  const boardNeed = 5 - boardIdx.length;
+  const nPlayers = players.length;
+
+  return await new Promise((resolve) => {
+    let t = 0, completed = 0;
+    let heroEqSum = 0;
+    const CHUNK = 6000;
+
+    function runChunk() {
+      const end = Math.min(t + CHUNK, TRIALS);
+      for (; t < end; t++) {
+        const blocked = new Set(deadIdx);
+        for (let b = 0; b < boardIdx.length; b++) blocked.add(boardIdx[b]);
+
+        // Hero hand for this trial
+        let hero;
+        if (heroSet) {
+          hero = sampleFrom(heroSet, blocked);
+          if (!hero) continue;
+          for (let k = 0; k < hero.length; k++) blocked.add(hero[k]);
+        } else {
+          hero = heroIdx;
+          for (let k = 0; k < hero.length; k++) {
+            if (blocked.has(hero[k])) { hero = null; break; }
+            blocked.add(hero[k]);
+          }
+          if (!hero) continue;
+        }
+
+        // Sample each villain
+        const villains = [];
+        let ok = true;
+        for (let v = 0; v < villainSets.length; v++) {
+          const h = sampleFrom(villainSets[v], blocked);
+          if (!h) { ok = false; break; }
+          for (let k = 0; k < h.length; k++) blocked.add(h[k]);
+          villains.push(h);
+        }
+        if (!ok) continue;
+
+        // Deal remaining board
+        const deck = [];
+        for (let i = 0; i < 52; i++) if (!blocked.has(i)) deck.push(i);
+        for (let k = 0; k < boardNeed; k++) {
+          const j = k + Math.floor(rng() * (deck.length - k));
+          const tmp = deck[k]; deck[k] = deck[j]; deck[j] = tmp;
+        }
+        const run = boardIdx.concat(deck.slice(0, boardNeed));
+
+        // Showdown: hero vs best villain (split on ties for hero share)
+        const heroScore = evalFn(hero, run);
+        let maxScore = heroScore, ties = 1;
+        for (let v = 0; v < villains.length; v++) {
+          const s = evalFn(villains[v], run);
+          if (s > maxScore) { maxScore = s; ties = 1; }
+          else if (s === maxScore) { ties++; }
+        }
+        if (heroScore === maxScore) heroEqSum += 1 / ties;
+        completed++;
+      }
+
+      onProgress(t, TRIALS);
+      if (t < TRIALS) {
+        setTimeout(runChunk, 0);
+      } else {
+        const heroEq = completed ? (heroEqSum / completed) * 100 : 0;
+        const out = { board: query.board || '', dead: query.dead || '', players: [] };
+        out.players.push({
+          range: players[0].range, equity: heroEq,
+          combos: heroSet ? heroSet.combos : undefined,
+          exact: heroSet ? heroSet.exact : true, trials: completed
+        });
+        // villain equity = remainder (heads-up); for multiway we only have hero%.
+        for (let v = 0; v < villainSets.length; v++) {
+          const set = villainSets[v];
+          const villEq = (villainSets.length === 1) ? (100 - heroEq) : undefined;
+          out.players.push({
+            range: players[v + 1].range,
+            equity: villEq, combos: set.combos, exact: set.exact, trials: completed
+          });
+        }
+        resolve(out);
+      }
+    }
+    runChunk();
+  });
+}
+
+const AI_SYSTEM_PROMPT_OLD = `You are an expert poker analyst. You INFER everything possible and RUN CALCULATIONS IMMEDIATELY. You almost NEVER ask clarifying questions — just figure it out and run it.
 
 INFERENCE RULES (follow these strictly):
 1. GAME TYPE: Infer from card count. 2 cards per hand = Hold'em. 4 cards = PLO/Omaha. If user says "bomb pot" or mentions two boards = doubleBoard. NEVER ask "what game type?"
@@ -3660,128 +3918,160 @@ async function aiSend() {
   await callClaude();
 }
 
-async function callClaude() {
+// Low-level Anthropic call. `messages` is the message array; `system` overrides
+// the system prompt. Returns the concatenated assistant text, or throws.
+async function anthropicComplete(messages, system) {
   const apiKey = getApiKey();
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-5-20250929',
+      max_tokens: 1024,
+      system: system,
+      messages: messages
+    })
+  });
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    const errMsg = errData.error?.message || response.statusText || 'Unknown error';
+    const e = new Error('API Error (' + response.status + '): ' + errMsg);
+    e.apiStatus = response.status;
+    throw e;
+  }
+  const data = await response.json();
+  return data.content.map(b => b.text).join('');
+}
+
+// Translate the user's English to a structured query via NLQuery, with up to
+// 2 self-repair retries on a parse/validate failure (the structured error is
+// sent back to the model).
+async function translateToQuery() {
+  const sysPrompt = window.NLQuery.buildSystemPrompt();
+  const msgs = aiConversation.slice();
+  let lastError = '';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const text = await anthropicComplete(msgs, sysPrompt);
+    aiConversation.push({ role: 'assistant', content: text });
+    msgs.push({ role: 'assistant', content: text });
+
+    const parsed = window.NLQuery.parseLLMResponse(text);
+    if (!parsed.ok) {
+      if (parsed.unsupported) return { ok: false, unsupported: true, error: parsed.error, text };
+      lastError = parsed.error;
+    } else {
+      const v = window.NLQuery.validateQuery(parsed.query);
+      if (v.ok) return { ok: true, query: parsed.query, text };
+      lastError = v.errors.map(e => (e.field ? e.field + ': ' : '') + e.message).join('; ');
+    }
+    const repair = 'That query was invalid: ' + lastError +
+      '\n\nFix it and re-output ONLY the corrected structured query in the |||CALC|||{...}|||END||| format.';
+    aiConversation.push({ role: 'user', content: repair });
+    msgs.push({ role: 'user', content: repair });
+  }
+  return { ok: false, error: lastError || 'Could not produce a valid query.' };
+}
+
+async function callClaude() {
   aiSending = true;
   document.getElementById('ai-send-btn').disabled = true;
   showTypingIndicator();
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-5-20250929',
-        max_tokens: 4096,
-        system: AI_SYSTEM_PROMPT,
-        messages: aiConversation
-      })
-    });
-
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      const errMsg = errData.error?.message || response.statusText || 'Unknown error';
-      removeTypingIndicator();
-      appendSystemMessage('API Error (' + response.status + '): ' + errMsg);
+    // 1. Translate English -> structured query (with self-repair).
+    const tr = await translateToQuery();
+    removeTypingIndicator();
+    if (!tr.ok) {
+      if (tr.unsupported) appendSystemMessage(tr.error);
+      else appendSystemMessage('Could not build a valid query: ' + tr.error);
+      aiSending = false;
+      document.getElementById('ai-send-btn').disabled = false;
+      return;
+    }
+    const query = tr.query;
+    if (query.game === 'doubleboard') {
+      appendSystemMessage('Double-board equity is not supported by the new engine yet. Use the Simulate tab.');
       aiSending = false;
       document.getElementById('ai-send-btn').disabled = false;
       return;
     }
 
-    const data = await response.json();
-    const assistantText = data.content.map(b => b.text).join('');
+    // 2. Compute equity with the NEW engine (chunked, with a progress line).
+    const progressDiv = document.createElement('div');
+    progressDiv.className = 'ai-msg ai-msg-system';
+    progressDiv.textContent = 'Computing equity...';
+    const area = document.getElementById('ai-chat-area');
+    area.appendChild(progressDiv);
+    area.scrollTop = area.scrollHeight;
 
-    aiConversation.push({ role: 'assistant', content: assistantText });
-
-    // Check if the response contains a |||CALC||| block
-    const calcMatch = assistantText.match(/\|\|\|CALC\|\|\|([\s\S]*?)\|\|\|END\|\|\|/);
-
-    if (calcMatch) {
-      // Show the text before the calc block
-      const beforeCalc = assistantText.split('|||CALC|||')[0].trim();
-      if (beforeCalc) {
-        appendAIMessage(renderMarkdown(beforeCalc));
-      }
-
-      // Parse and run the calculation with live progress
-      const progressDiv = document.createElement('div');
-      progressDiv.className = 'ai-msg ai-msg-system';
-      progressDiv.innerHTML = '\u23F3 Running equity calculation...';
-      const chatAreaForProgress = document.getElementById('ai-chat-area');
-      chatAreaForProgress.appendChild(progressDiv);
-      chatAreaForProgress.scrollTop = chatAreaForProgress.scrollHeight;
-
-      try {
-        const calcJson = JSON.parse(calcMatch[1].trim());
-        const calcResults = await runAICalculation(calcJson, (done, total, heroEqSoFar) => {
+    let result;
+    try {
+      result = await computeEquity(query, {
+        trials: 150000,
+        onStatus: (m) => { progressDiv.textContent = m; },
+        onProgress: (done, total) => {
           const pct = Math.round(done / total * 100);
-          const bar = '█'.repeat(Math.round(pct / 5)) + '░'.repeat(20 - Math.round(pct / 5));
-          let msg = '⏳ Calculating: ' + done + '/' + total + ' combos [' + bar + '] ' + pct + '%';
-          if (heroEqSoFar !== undefined && done > 0) {
-            msg += '\n📊 Running equity: ' + (heroEqSoFar * 100).toFixed(1) + '%';
-          }
-          progressDiv.innerHTML = msg.replace('\n', '<br>');
-          document.getElementById('ai-chat-area').scrollTop = document.getElementById('ai-chat-area').scrollHeight;
-        });
-        progressDiv.remove();
-
-        // Send results back to Claude for analysis
-        const resultsMsg = formatCalcResultsForClaude(calcJson, calcResults);
-        aiConversation.push({ role: 'user', content: resultsMsg });
-
-        // Show a formatted results table
-        appendAIMessage(renderCalcResultsHTML(calcJson, calcResults));
-
-        // Call Claude again for analysis
-        showTypingIndicator();
-        const analysisResponse = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true'
-          },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-5-20250929',
-            max_tokens: 4096,
-            system: AI_SYSTEM_PROMPT,
-            messages: aiConversation
-          })
-        });
-
-        if (analysisResponse.ok) {
-          const analysisData = await analysisResponse.json();
-          const analysisText = analysisData.content.map(b => b.text).join('');
-          aiConversation.push({ role: 'assistant', content: analysisText });
-          appendAIMessage(renderMarkdown(analysisText));
+          progressDiv.textContent = 'Computing equity... ' + pct + '%';
+          area.scrollTop = area.scrollHeight;
         }
-
-        // Save to history
-        saveToHistory(
-          aiConversation.find(m => m.role === 'user')?.content || '',
-          calcJson,
-          calcResults,
-          aiConversation[aiConversation.length - 1]?.content || ''
-        );
-
-      } catch (calcErr) {
-        removeTypingIndicator();
-        appendSystemMessage('Calculation error: ' + calcErr.message);
-      }
-    } else {
-      // Normal text response (no calculation)
-      appendAIMessage(renderMarkdown(assistantText));
+      });
+    } catch (calcErr) {
+      progressDiv.remove();
+      appendSystemMessage('Engine error: ' + calcErr.message);
+      aiSending = false;
+      document.getElementById('ai-send-btn').disabled = false;
+      return;
     }
+    progressDiv.remove();
+
+    // 3. RENDER the deterministic, math-first block verbatim in a <pre>.
+    const block = window.NLQuery.formatResultBlock(query, result);
+    const pre = document.createElement('pre');
+    pre.className = 'ai-result-block';
+    pre.textContent = block;
+    const wrap = document.createElement('div');
+    wrap.className = 'ai-msg ai-msg-ai';
+    wrap.appendChild(pre);
+    area.appendChild(wrap);
+    area.scrollTop = area.scrollHeight;
+
+    // 4. OPTIONAL single Claude call for a <=2-line factual note (no filler).
+    try {
+      const notePrompt = window.NLQuery.buildResultPrompt(query, result);
+      showTypingIndicator();
+      const note = (await anthropicComplete(
+        [{ role: 'user', content: notePrompt }], ''
+      )).trim();
+      removeTypingIndicator();
+      if (note) {
+        const noteDiv = document.createElement('div');
+        noteDiv.className = 'ai-msg ai-msg-ai';
+        noteDiv.innerHTML = colorizeCards(note.replace(/\n/g, '<br>'));
+        area.appendChild(noteDiv);
+        area.scrollTop = area.scrollHeight;
+        aiConversation.push({ role: 'assistant', content: note });
+      }
+    } catch (noteErr) {
+      removeTypingIndicator();
+      /* the note is optional; the math block is the source of truth */
+    }
+
+    // 5. Save to history (best-effort).
+    try {
+      saveToHistory(
+        aiConversation.find(m => m.role === 'user')?.content || '',
+        query, result, block
+      );
+    } catch (e) {}
 
   } catch (err) {
     removeTypingIndicator();
-    appendSystemMessage('Error: ' + err.message);
+    appendSystemMessage(err.message || ('Error: ' + err));
   }
 
   aiSending = false;
@@ -4637,6 +4927,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
   renderHistory();
+  // Eager-load the small hold'em ranking for the percentage engine.
+  // The 1.2MB omaha ranking loads lazily on first omaha-% query.
+  ensureHoldemRanking().catch(e => console.warn('[cusPokerTools] holdem ranking load failed:', e));
 });
 
 // ============================================================

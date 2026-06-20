@@ -1,3 +1,8 @@
+// [wrapped in IIFE for safe classic-script loading in the browser:
+//  prevents top-level decls (RANKS/SUITS/parseRange/API/etc.) from
+//  leaking to the global scope and colliding with the app or each other.
+//  module.exports and window.X assignments still work inside the IIFE.]
+;(function(){
 'use strict';
 /*
  * nl-query.js
@@ -492,3 +497,5 @@ if (typeof module !== 'undefined' && module.exports) {
 } else if (typeof window !== 'undefined') {
   window.NLQuery = API;
 }
+
+})();

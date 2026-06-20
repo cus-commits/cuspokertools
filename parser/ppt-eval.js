@@ -1,3 +1,8 @@
+// [wrapped in IIFE for safe classic-script loading in the browser:
+//  prevents top-level decls (RANKS/SUITS/parseRange/API/etc.) from
+//  leaking to the global scope and colliding with the app or each other.
+//  module.exports and window.X assignments still work inside the IIFE.]
+;(function(){
 // ppt-eval.js
 // Self-contained poker hand evaluator ported VERBATIM from the validated
 // Web Worker engine in ../index.html (WORKER_CODE: evaluate5, bestHoldemHand,
@@ -161,7 +166,7 @@ function compareOmaha(heroHole, villainHole, board) {
   return a > b ? 1 : (a < b ? -1 : 0);
 }
 
-module.exports = {
+var PPTEvalAPI = {
   evaluate5,
   eval7holdem,
   evalOmaha,
@@ -172,10 +177,17 @@ module.exports = {
   detectStraight,
 };
 
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = PPTEvalAPI;
+}
+if (typeof window !== 'undefined') {
+  window.PPTEval = PPTEvalAPI;
+}
+
 // ---------------------------------------------------------------------------
 // Self-test (run with: node ppt-eval.js)
 // ---------------------------------------------------------------------------
-if (require.main === module) {
+if (typeof require !== 'undefined' && require.main === module) {
   // card(rankChar, suitIdx): rank 0=2..12=A. idx = rank*4 + suit.
   const RANKS = { '2': 0, '3': 1, '4': 2, '5': 3, '6': 4, '7': 5, '8': 6, '9': 7, 'T': 8, 'J': 9, 'Q': 10, 'K': 11, 'A': 12 };
   function C(str) { return RANKS[str[0]] * 4 + 'cdhs'.indexOf(str[1]); }
@@ -249,3 +261,5 @@ if (require.main === module) {
   console.log(`\nppt-eval self-test: ${pass} passed, ${fail} failed`);
   process.exit(fail === 0 ? 0 : 1);
 }
+
+})();
