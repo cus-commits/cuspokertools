@@ -324,6 +324,8 @@ table.results-table .equity-cell{font-weight:700;color:var(--green);}
 <script src="parser/ppt-omaha.js"></script>
 <script src="parser/ppt-percent.js"></script>
 <script src="parser/ppt-equity.js"></script>
+<script src="parser/wrap-predicate.js"></script>
+<script src="parser/board-range.js"></script>
 <script src="parser/nl-query.js"></script>
 
 <script>
@@ -3559,6 +3561,15 @@ async function computeEquity(query, opts) {
   const players = query.players || [];
   if (players.length < 2) throw new Error('Need at least 2 players (hero + 1 villain)');
 
+  // Board-relative villain(s): any player carrying a `boardSpec` is resolved to
+  // REAL combos by board-range.js (never "*", never an approximation). That path
+  // runs its own async/chunked resolution + a thin pooled Monte-Carlo that reuses
+  // the SAME validated combo-resolution (PPTEquity._internals) and the SAME
+  // evaluator (window.PPTEval) — APP_RULES.md rule 4.
+  if (players.some(p => p && p.boardSpec)) {
+    return await computeEquityWithBoardSpec(query, opts);
+  }
+
   // Preload the percentage rankings the engine needs BEFORE it runs. The engine
   // resolves '%' tokens through PPTPercent, which needs rankings preset in the
   // browser (it cannot fetch them itself).
@@ -3601,6 +3612,271 @@ async function computeEquity(query, opts) {
     }))
   };
   return out;
+}
+
+// --------------------------------------------------------------------------
+// Board-relative ("boardSpec") equity path.
+// --------------------------------------------------------------------------
+// One or more villains are described by board-relative made-hand/draw CLASSES
+// (twoPair, set, straight, wrap, topPair, openEnder, ...). board-range.js
+// resolves each boardSpec to the EXACT combo list on the known board — real
+// combos, never "*". We then run a thin pooled Monte-Carlo IN THE BROWSER that:
+//   - samples the boardSpec villain uniformly from its resolved combo pool,
+//   - resolves every OTHER player through PPTEquity._internals.resolvePlayers
+//     (the same validated parser/percent/combo machinery as the normal path),
+//   - evaluates ALL holdings with window.PPTEval (the same engine), splitting ties.
+// The brute-force enumeration is CHUNKED with setTimeout yielding + a progress
+// spinner so the UI never freezes (resolveBoardRange is ~10-20s for broad PLO).
+//
+// ENCODING BRIDGE: board/dead arrive as standard rank+suit STRINGS (e.g.
+// "5h4d2c"); suit chars 'cdhs' are literal, so board-range.js's cards()/PPTEquity
+// strToCard both read them in the engine's own 'cdhs' index space. We pass the
+// resolved combos to the MC as ENGINE indices and evaluate with PPTEval directly
+// — no raw indices ever cross the index.html 'hdcs' / engine 'cdhs' divide.
+async function computeEquityWithBoardSpec(query, opts) {
+  opts = opts || {};
+  const game = query.game;
+  if (game !== 'holdem' && game !== 'omaha') {
+    throw new Error('boardSpec equity supports holdem and omaha (got ' + JSON.stringify(game) + ')');
+  }
+  if (!window.BoardRange || !window.BoardRange.resolveBoardRange) {
+    throw new Error('BoardRange engine not loaded');
+  }
+  if (!window.PPTEval || !window.PPTEquity || !window.PPTEquity._internals) {
+    throw new Error('PPTEval / PPTEquity engine not loaded');
+  }
+  const onStatus = opts.onStatus || function () {};
+  const onProgress = opts.onProgress || function () {};
+  const TRIALS = opts.trials || 150000;
+  const rng = Math.random;
+
+  const players = query.players || [];
+  if (players.length < 2) throw new Error('Need at least 2 players (hero + 1 villain)');
+
+  const brGame = (game === 'holdem') ? 'holdem' : 'plo'; // board-range game tag
+  const holeSize = (game === 'holdem') ? 2 : 4;
+  const evalFn = (game === 'holdem') ? window.PPTEval.eval7holdem : window.PPTEval.evalOmaha;
+
+  // Board + dead as ENGINE indices (board-range.js cards() = 'cdhs' literal suits).
+  const boardIdx = query.board ? window.BoardRange.cards(query.board) : [];
+  if (boardIdx.length < 3 || boardIdx.length > 4) {
+    throw new Error('boardSpec equity needs a flop (3) or turn (4) board (got ' + boardIdx.length + ')');
+  }
+  const deadIdx = query.dead ? window.BoardRange.cards(query.dead) : [];
+
+  // Preload omaha % rankings if any non-boardSpec player is a percentage.
+  if (game === 'holdem') {
+    await ensureHoldemRanking();
+  } else {
+    const needsOmahaRank = players.some(p => p && !p.boardSpec && isPercentToken(p.range));
+    if (needsOmahaRank) await ensureOmahaRanking(onStatus);
+  }
+
+  // Resolve every player into a sampling pool of ENGINE-index holdings.
+  //   { kind:'fixed', cards:[idx..] } | { kind:'range', combos:[[idx..]..] }
+  const resolved = [];
+  const labelInfo = []; // per player: { range:<display>, exact:<bool>, combos:<count> }
+  for (let i = 0; i < players.length; i++) {
+    const p = players[i];
+    if (p && p.boardSpec) {
+      // For a boardSpec villain, the hero's / other fixed givens are dead cards
+      // so the resolved combos never collide with them.
+      const localDead = deadIdx.slice();
+      collectFixedGivens(players, game, i).forEach(c => localDead.push(c));
+      onStatus('Resolving board-relative range...');
+      const rr = await resolveBoardRangeChunked(brGame, boardIdx, p.boardSpec, localDead,
+        (frac) => { onStatus('Resolving board-relative range... ' + Math.round(frac * 100) + '%'); });
+      if (!rr.combos.length) throw new Error('Board-relative range resolved to 0 combos (' + rr.label + ')');
+      resolved.push({ kind: 'range', combos: rr.combos });
+      const label = window.BoardRange.describeSpec(p.boardSpec, brGame);
+      labelInfo.push({ range: label, exact: false, combos: rr.count });
+    } else {
+      // Non-boardSpec player: reuse the validated PPTEquity resolution so the
+      // SAME parser/percent/combo machinery produces the pool.
+      const r = window.PPTEquity._internals.resolvePlayers([{ spec: p.range }], game, deadIdx)[0];
+      if (r.kind === 'fixed') {
+        resolved.push({ kind: 'fixed', cards: r.cards });
+        labelInfo.push({ range: p.range, exact: true, combos: 1 });
+      } else {
+        resolved.push({ kind: 'range', combos: r.combos });
+        labelInfo.push({ range: p.range, exact: false, combos: r.count });
+      }
+    }
+  }
+
+  // Thin pooled Monte-Carlo (same shape as ppt-equity.js runSingleBoard).
+  onStatus('Computing equity...');
+  const mc = await pooledMonteCarlo(resolved, evalFn, boardIdx, deadIdx, holeSize, TRIALS, rng,
+    (done, total) => onProgress(done, total));
+
+  return {
+    board: query.board || '',
+    dead: query.dead || '',
+    game: game,
+    players: mc.equity.map((eq, i) => ({
+      range: labelInfo[i].range,
+      equity: eq,
+      combos: labelInfo[i].combos,
+      exact: labelInfo[i].exact,
+      trials: mc.trials
+    }))
+  };
+}
+
+// Gather the FIXED (specific-hand) holdings of every player EXCEPT `exceptIdx`,
+// as ENGINE indices, so they can be treated as dead cards when resolving a
+// boardSpec villain (avoids the villain pool overlapping the hero's known hand).
+function collectFixedGivens(players, game, exceptIdx) {
+  const need = (game === 'holdem') ? 2 : 4;
+  const out = [];
+  for (let i = 0; i < players.length; i++) {
+    if (i === exceptIdx) continue;
+    const p = players[i];
+    if (!p || p.boardSpec) continue;
+    const fixed = window.PPTEquity._internals.tryFixedHand(p.range, need);
+    if (fixed) fixed.forEach(c => out.push(c));
+  }
+  return out;
+}
+
+// Chunked wrapper around board-range.js so the ~10-20s PLO enumeration yields to
+// the event loop (UI stays responsive, spinner updates). We re-enumerate the live
+// deck here, calling the engine's matchesSpec() per candidate, yielding every
+// CHUNK combos via setTimeout(0). Same matching logic as resolveBoardRange, just
+// cooperative. Returns { combos:[[idx..]..], count, label } (engine indices).
+function resolveBoardRangeChunked(brGame, boardIdx, spec, deadIdx, onFrac) {
+  return new Promise((resolve, reject) => {
+    try {
+      const BR = window.BoardRange;
+      const blocked = {};
+      boardIdx.forEach(c => blocked[c] = 1);
+      deadIdx.forEach(c => blocked[c] = 1);
+      const deck = [];
+      for (let c = 0; c < 52; c++) if (!blocked[c]) deck.push(c);
+      const L = deck.length;
+      const holdem = (brGame === 'holdem');
+      const combos = [];
+      // total candidate count for progress (C(L,2) or C(L,4))
+      const total = holdem ? (L * (L - 1) / 2)
+                           : (L * (L - 1) * (L - 2) * (L - 3) / 24);
+      let seen = 0;
+      const CHUNK = 40000; // candidate hands per event-loop slice
+      // Iterator state for the nested combination loops.
+      let a = 0, b = 1, c2 = 2, d = 3;
+      const label = BR.describeSpec(spec, brGame);
+
+      function step() {
+        try {
+          let work = 0;
+          if (holdem) {
+            for (; a < L - 1; a++, b = a + 1) {
+              for (; b < L; b++) {
+                const h2 = [deck[a], deck[b]];
+                if (BR.matchesSpec('holdem', h2, boardIdx, spec)) combos.push(h2);
+                seen++; work++;
+                if (work >= CHUNK) { b++; scheduleNext(); return; }
+              }
+            }
+          } else {
+            for (; a < L - 3; a++) {
+              for (; b < L - 2; b++) {
+                for (; c2 < L - 1; c2++) {
+                  for (; d < L; d++) {
+                    const h4 = [deck[a], deck[b], deck[c2], deck[d]];
+                    if (BR.matchesSpec('plo', h4, boardIdx, spec)) combos.push(h4);
+                    seen++; work++;
+                    if (work >= CHUNK) { d++; scheduleNext(); return; }
+                  }
+                  d = c2 + 2;
+                }
+                c2 = b + 2; d = c2 + 1;
+              }
+              b = a + 2; c2 = b + 1; d = c2 + 1;
+            }
+          }
+          resolve({ combos: combos, count: combos.length, label: label });
+        } catch (e) { reject(e); }
+      }
+      function scheduleNext() {
+        if (onFrac && total > 0) onFrac(Math.min(1, seen / total));
+        setTimeout(step, 0);
+      }
+      // Initialize the PLO inner indices coherently for the first slice.
+      if (!holdem) { b = 1; c2 = 2; d = 3; }
+      step();
+    } catch (e) { reject(e); }
+  });
+}
+
+// Thin pooled Monte-Carlo, chunked across event-loop slices for progress + a
+// responsive UI. Mirrors ppt-equity.js runSingleBoard: per trial, sample one
+// holding per player (rejection-sampling collisions), run out the board, eval
+// all with `evalFn` (window.PPTEval), award the pot (split on ties).
+function pooledMonteCarlo(resolved, evalFn, fixedBoard, dead, holeSize, trials, rng, onProgress) {
+  return new Promise((resolve) => {
+    const N = resolved.length;
+    const eq = new Float64Array(N);
+    let completed = 0, t = 0;
+    const SLICE = 8000; // trials per event-loop slice
+
+    function sampleHolding(pl, used) {
+      if (pl.kind === 'fixed') {
+        for (let i = 0; i < pl.cards.length; i++) if (used[pl.cards[i]]) return null;
+        return pl.cards;
+      }
+      const combos = pl.combos, n = combos.length;
+      for (let attempt = 0; attempt < 64; attempt++) {
+        const h = combos[(rng() * n) | 0];
+        let clash = false;
+        for (let k = 0; k < h.length; k++) if (used[h[k]]) { clash = true; break; }
+        if (!clash) return h;
+      }
+      return null;
+    }
+
+    function runSlice() {
+      const end = Math.min(t + SLICE, trials);
+      for (; t < end; t++) {
+        const used = new Uint8Array(52);
+        for (let d = 0; d < dead.length; d++) used[dead[d]] = 1;
+        for (let b = 0; b < fixedBoard.length; b++) used[fixedBoard[b]] = 1;
+        const holdings = new Array(N);
+        let okTrial = true;
+        for (let p = 0; p < N; p++) {
+          const h = sampleHolding(resolved[p], used);
+          if (!h) { okTrial = false; break; }
+          holdings[p] = h;
+          for (let k = 0; k < h.length; k++) used[h[k]] = 1;
+        }
+        if (!okTrial) continue;
+        // run out the board
+        const board = fixedBoard.slice();
+        const need = 5 - fixedBoard.length;
+        if (need > 0) {
+          const deck = [];
+          for (let c = 0; c < 52; c++) if (!used[c]) deck.push(c);
+          for (let k = 0; k < need; k++) {
+            const j = k + ((rng() * (deck.length - k)) | 0);
+            const tmp = deck[k]; deck[k] = deck[j]; deck[j] = tmp;
+            board.push(deck[k]);
+          }
+        }
+        let best = -1; const scores = new Array(N);
+        for (let e = 0; e < N; e++) { const s = evalFn(holdings[e], board); scores[e] = s; if (s > best) best = s; }
+        let winners = 0;
+        for (let w = 0; w < N; w++) if (scores[w] === best) winners++;
+        const share = 1 / winners;
+        for (let g = 0; g < N; g++) if (scores[g] === best) eq[g] += share;
+        completed++;
+      }
+      if (onProgress) onProgress(t, trials);
+      if (t < trials) { setTimeout(runSlice, 0); return; }
+      const equity = [];
+      for (let i = 0; i < N; i++) equity.push(completed ? (eq[i] / completed) * 100 : 0);
+      resolve({ equity: equity, trials: completed });
+    }
+    runSlice();
+  });
 }
 
 const AI_SYSTEM_PROMPT_OLD = `You are an expert poker analyst. You INFER everything possible and RUN CALCULATIONS IMMEDIATELY. You almost NEVER ask clarifying questions — just figure it out and run it.

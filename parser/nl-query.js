@@ -86,14 +86,30 @@ var STRUCTURED_QUERY_SCHEMA = {
   intent: ['equity'],
   fields: {
     game: 'holdem | omaha | doubleboard (required)',
-    players: 'array of { label?, range } — at least 2 (required)',
+    players: 'array of { label?, range } OR { label?, boardSpec:{...} } — at least 2 (required)',
     board: 'string of concatenated cards e.g. "Kh3c4c" (single-board games)',
     board1: 'doubleboard only — first board',
     board2: 'doubleboard only — second board',
     dead: 'string of dead/blocker cards e.g. "AsKd" (NOT a range)',
     intent: "'equity' (only supported intent today)",
-    assumptions: 'plain-English statement of every non-obvious interpretation made (game choice + why, assumed board suits, how vague ranges were read, ambiguities resolved). Surfaced verbatim to the user.'
+    assumptions: 'plain-English statement of every non-obvious interpretation made (game choice + why, assumed board suits, how vague ranges were read, ambiguities resolved). Surfaced verbatim to the user.',
+    boardSpec: 'a player whose holding is a set of board-relative made-hand/draw CLASSES on the KNOWN board (e.g. {twoPair:true, madeStraight:true, wrap:true, topPair:true, openEnder:true}). Resolved to REAL combos by board-range.js — never approximated and never "*". Requires a board.'
   }
+};
+
+/* Board-relative spec keys understood by board-range.js (resolveBoardRange).
+ * A player may carry { boardSpec: { ...subset of these... } } INSTEAD of a
+ * `range` string when its holding is described by made-hand classes + draws on
+ * the (known) board. The engine resolves the spec to the concrete combo list.
+ * Boolean keys are OR'd by default; pass all:true to AND them. minStraightOuts
+ * takes a number. This list is the SOURCE OF TRUTH for what validateQuery and
+ * the prompt allow. */
+var BOARD_SPEC_KEYS = {
+  madeStraight: 'bool', wrap: 'bool', bigWrap: 'bool', monsterWrap: 'bool',
+  openEnder: 'bool', gutshot: 'bool', minStraightOuts: 'num',
+  twoPair: 'bool', topTwoPair: 'bool', set: 'bool', topSet: 'bool',
+  bottomSet: 'bool', pair: 'bool', topPair: 'bool', overpair: 'bool',
+  trips: 'bool', topPairOrBetter: 'bool', all: 'bool'
 };
 
 /* Per-game hand length: how many cards a fully-specified hand has.
@@ -160,6 +176,31 @@ var FEW_SHOTS = [
     q: 'on a 2-2-5 rainbow flop I have an overpair of jacks, villain has any trips or better, equity?',
     a: { game: 'holdem', players: [{ label: 'Hero', range: 'JJ' }, { label: 'Villain', range: '2' }], board: '2c2d5h', intent: 'equity',
          assumptions: 'Hold\'em (two-card holdings, "overpair" + a single villain board-relative class). "Overpair of jacks" on a 2-2-5 board = JJ. Board stated rainbow with no exact suits; assumed 2c2d5h (three different suits) to honour "rainbow". "Any trips or better" on this paired board: trips needs a 2, so approximated as any hand containing a 2 (range "2"). This is an approximation — it includes 2x trips and full houses/quads but does not separately add the rare straight (3-4 making 2-3-4-5-6) since "or better" was read as trips-and-up of the board pair.' }
+  },
+  {
+    // BOARD-RELATIVE villain on a KNOWN board => emit a boardSpec, NOT a range
+    // string and NOT "*". The board is fully given (5h4d2c), so every class
+    // ("any two pair", straight, wrap, top pair, open-ender) is COMPUTED into
+    // real combos by board-range.js. PLO read: KK + 7-8 = KcKs7h8d (4 cards).
+    q: 'PLO, I have kings with 7-8 on a 5-4-2 board, villain has any two pair, a straight, a wrap, top pair, or an open-ender — am I ahead?',
+    a: { game: 'omaha',
+         players: [
+           { label: 'Hero', range: 'KcKs7h8d' },
+           { label: 'Villain', boardSpec: { twoPair: true, madeStraight: true, wrap: true, topPair: true, openEnder: true } }
+         ],
+         board: '5h4d2c', intent: 'equity',
+         assumptions: 'PLO (4-card holding: pocket KK plus the 7 and 8 = KcKs7h8d). The villain is described by board-relative classes on the fully-known 5-4-2 board, so its holding is a boardSpec resolved to real combos by the engine (twoPair OR straight OR wrap OR topPair OR openEnder) — NOT approximated as "*" and NOT a PPT range string. Board 5-4-2 given without exact suits; the classes referenced (made hands + straight draws, no flush) are suit-immaterial, so assigned 5h4d2c.' }
+  },
+  {
+    // CARDINALITY FIX (the representative-board miss): hero holds a pocket pair,
+    // and "a set of that rank" needs EXACTLY ONE matching card on the board.
+    // Putting two on the board pairs the board AND makes the pocket pair QUADS,
+    // which overstates the hand. One R on a 3-card board = a set.
+    q: 'in holdem I have pocket sevens and floppped a set, villain has an overpair, equity?',
+    a: { game: 'holdem',
+         players: [{ label: 'Hero', range: '77' }, { label: 'Villain', boardSpec: { overpair: true } }],
+         board: '7h9c2d', intent: 'equity',
+         assumptions: 'Hold\'em (two-card holdings). Hero "flopped a set" with pocket sevens => 77, and the representative board must contain EXACTLY ONE seven (7h9c2d). Putting a SECOND seven on the board would pair the board and turn 77 into QUADS, overstating the hand — a set of sevens is three sevens total (two in hand + one on board). Villain "an overpair" on a 7-high-ish board is a board-relative class, emitted as boardSpec {overpair:true} and resolved to real combos.' }
   },
   {
     q: 'top 5% vs 5%-15% preflop holdem',
@@ -387,6 +428,48 @@ function buildSystemPrompt(opts) {
 '  Where a board-relative range cannot be made exact, it is BETTER to ship a clearly-labelled',
 '  approximation than a silent guess. The assumptions string is where you are honest about the gap.',
 '',
+'BOARD-SPEC — THE PREFERRED WAY TO EXPRESS A VILLAIN BY MADE-HAND / DRAW CLASSES ON A KNOWN BOARD',
+'When the board is KNOWN (you have the exact cards, or the suits are immaterial so you can fix a',
+'representative board) AND a villain is described by board-relative made-hand/draw CLASSES — "any two',
+'pair", "a set", "trips", "top pair", "an overpair", "a straight", "a wrap", "an open-ender", "a',
+'gutshot", "X or better" — DO NOT write a PPT range string and DO NOT write "*". Instead give that',
+'player a "boardSpec" object (and NO "range" key). The engine (board-range.js) resolves the boardSpec',
+'to the EXACT set of matching combos on the board and runs them through the equity engine — real',
+'combos, never an approximation, never "*". This is strictly better than a hand-rolled union string.',
+'  boardSpec is an object of boolean flags (OR\'d together by default; add "all":true to AND them):',
+'    madeStraight  a made straight on the board',
+'    wrap          PLO straight draw >= 9 outs   (PLO only)',
+'    bigWrap       PLO straight draw >= 13 outs  (PLO only)',
+'    monsterWrap   PLO straight draw >= 17 outs  (PLO only)',
+'    openEnder     open-ended straight draw (two ranks complete)',
+'    gutshot       gutshot straight draw (one rank completes)',
+'    minStraightOuts: N   any straight draw with >= N out-cards (number, PLO useful)',
+'    twoPair       two distinct board ranks paired by the hand',
+'    topTwoPair    pairs the two highest distinct board ranks',
+'    set           a pocket pair matching a board rank (true set)',
+'    topSet        set of the highest board rank',
+'    bottomSet     set of the lowest board rank',
+'    pair          any made pair on the board',
+'    topPair       pairs the highest board rank, or an overpair',
+'    overpair      a pocket pair strictly above the highest board card',
+'    trips         made trips (includes set)',
+'    topPairOrBetter   top pair, two pair, set, trips, or a straight and up',
+'  Example: "villain has any two pair, a straight, a wrap, top pair, or an open-ender" on a known',
+'  board => boardSpec:{ "twoPair":true, "madeStraight":true, "wrap":true, "topPair":true,',
+'  "openEnder":true }. ONLY emit keys from the list above; if a described class is NOT in the list,',
+'  fall back to the closest PPT range string and disclose it in assumptions.',
+'  Use boardSpec only when the board is present. If the board is genuinely UNKNOWN (suits/cards',
+'  missing and MATERIAL — e.g. a flush draw whose suit you cannot fix), keep the existing CLARIFY',
+'  behavior and ASK; do NOT invent a boardSpec on a board you had to guess for a suit-dependent class.',
+'  ALWAYS record in assumptions which classes you packed into the boardSpec and the board you used.',
+'',
+'REPRESENTATIVE-BOARD CARDINALITY (a real miss to avoid): when you invent a representative board to',
+'realize "a set/trips of rank R" and the HERO holds the pocket pair RR, put EXACTLY ONE card of rank R',
+'on the board (3 cards total => a SET; TWO copies of R makes the hero QUADS and overstates the hand).',
+'A set of sevens is three sevens TOTAL: two in hand + one on the board. Likewise "trips of R" where',
+'the hand holds one R needs TWO R on the board, etc. — count the total copies and never accidentally',
+'make quads. For DOUBLE boards, STATE the per-board rank count in assumptions BEFORE committing.',
+'',
 'CONTRADICTIONS / IMPOSSIBLE INPUT: if a clause is self-contradictory or cannot exist (e.g. a "flush',
 'draw" demanded on a rainbow board you were forced to assume), make the most reasonable assumption,',
 'flag it in assumptions, and still emit a valid query. Never crash, never emit unsupported tokens.',
@@ -552,6 +635,43 @@ function validateRange(range, game, deadCards, errors, label) {
   }
 }
 
+/* Validate a board-relative spec object (a boardSpec player). Checks that it is
+ * a non-empty object whose keys are all known (BOARD_SPEC_KEYS) and have the
+ * right value type. The combo resolution itself is board-range.js's job. */
+function validateBoardSpec(spec, errors, label) {
+  if (!spec || typeof spec !== 'object' || Array.isArray(spec)) {
+    errors.push({ field: 'players', message: 'Player ' + label + ' boardSpec must be an object of board-relative class flags' });
+    return;
+  }
+  var keys = Object.keys(spec);
+  if (keys.length === 0) {
+    errors.push({ field: 'players', message: 'Player ' + label + ' boardSpec is empty (no board-relative classes given)' });
+    return;
+  }
+  var hadRealClass = false;
+  for (var i = 0; i < keys.length; i++) {
+    var k = keys[i];
+    var kind = BOARD_SPEC_KEYS[k];
+    if (!kind) {
+      errors.push({ field: 'players', message: 'Player ' + label + ' boardSpec has unknown key "' + k + '" (allowed: ' + Object.keys(BOARD_SPEC_KEYS).join(', ') + ')' });
+      continue;
+    }
+    if (kind === 'num') {
+      if (typeof spec[k] !== 'number' || !isFinite(spec[k]) || spec[k] < 0) {
+        errors.push({ field: 'players', message: 'Player ' + label + ' boardSpec.' + k + ' must be a non-negative number' });
+      } else { hadRealClass = true; }
+    } else { // bool
+      if (typeof spec[k] !== 'boolean') {
+        errors.push({ field: 'players', message: 'Player ' + label + ' boardSpec.' + k + ' must be a boolean' });
+      } else if (spec[k] && k !== 'all') { hadRealClass = true; }
+    }
+  }
+  // "all":true alone (or only false flags) selects nothing -> 0 combos by design.
+  if (!hadRealClass) {
+    errors.push({ field: 'players', message: 'Player ' + label + ' boardSpec selects no class (all flags false / only "all" set) — it would match 0 combos' });
+  }
+}
+
 function validateQuery(query) {
   var errors = [];
 
@@ -631,6 +751,11 @@ function validateQuery(query) {
       }
     }
   }
+
+  // A boardSpec player resolves to board-relative combos — it REQUIRES a board
+  // (a flop or turn). Record whether any boardSpec player exists so we can demand
+  // a board and reject doubleboard (board-range.js resolves a single board only).
+  var hasBoardSpecPlayer = false;
   for (var ci = 0; ci < collisionSrc.length; ci++) {
     var col = collisionSrc[ci];
     errors.push({ field: 'cards', message: 'Card ' + col.card + ' appears in both ' + col.a + ' and ' + col.b });
@@ -650,11 +775,31 @@ function validateQuery(query) {
         continue;
       }
       var lbl = player.label || ('#' + (p + 1));
-      // doubleboard is PLO: the engine deals 4-card Omaha holdings across both
-      // boards, so its ranges MUST validate with the Omaha (4-card) grammar,
-      // exactly like 'omaha'. Only plain 'holdem' uses the 2-card grammar.
-      var parseGame = (game === 'holdem') ? 'holdem' : 'omaha';
-      validateRange(player.range, parseGame, rangeBlockers, errors, lbl);
+      // A player carries EITHER a board-relative `boardSpec` object OR a `range`
+      // string. boardSpec is resolved by board-range.js to concrete combos, so it
+      // is validated structurally (known keys) rather than through the PPT parser.
+      if (player.boardSpec !== undefined) {
+        hasBoardSpecPlayer = true;
+        validateBoardSpec(player.boardSpec, errors, lbl);
+      } else {
+        // doubleboard is PLO: the engine deals 4-card Omaha holdings across both
+        // boards, so its ranges MUST validate with the Omaha (4-card) grammar,
+        // exactly like 'omaha'. Only plain 'holdem' uses the 2-card grammar.
+        var parseGame = (game === 'holdem') ? 'holdem' : 'omaha';
+        validateRange(player.range, parseGame, rangeBlockers, errors, lbl);
+      }
+    }
+  }
+
+  // boardSpec players need a single KNOWN board (flop or turn). board-range.js
+  // resolves against ONE board, so doubleboard is not supported for them.
+  if (hasBoardSpecPlayer) {
+    if (game === 'doubleboard') {
+      errors.push({ field: 'players', message: 'boardSpec players are not supported on a doubleboard (board-range.js resolves a single board only)' });
+    } else if (boardCards.length < 3) {
+      errors.push({ field: 'board', message: 'a boardSpec player requires a board (flop or turn) to resolve its combos against' });
+    } else if (boardCards.length > 4) {
+      errors.push({ field: 'board', message: 'boardSpec players resolve on a flop (3) or turn (4) board only (got ' + boardCards.length + ' cards)' });
     }
   }
 
@@ -770,10 +915,12 @@ function buildResultPrompt(query, result) {
 /* ================================================================== */
 var API = {
   STRUCTURED_QUERY_SCHEMA: STRUCTURED_QUERY_SCHEMA,
+  BOARD_SPEC_KEYS: BOARD_SPEC_KEYS,
   HAND_LEN: HAND_LEN,
   buildSystemPrompt: buildSystemPrompt,
   parseLLMResponse: parseLLMResponse,
   validateQuery: validateQuery,
+  validateBoardSpec: validateBoardSpec,
   formatResultBlock: formatResultBlock,
   buildResultPrompt: buildResultPrompt,
   OUTPUT_CONTRACT: OUTPUT_CONTRACT,

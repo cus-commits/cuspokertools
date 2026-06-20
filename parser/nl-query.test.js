@@ -368,6 +368,96 @@ expectError('reject: range blocked to 0 combos by the BOARD (not dead)',
 })();
 
 /* ================================================================== */
+/* BOARD-SPEC PLAYERS — board-relative made-hand/draw classes -> combos */
+/* ================================================================== */
+(function () {
+  // a) the KK78 production bug spot: a villain described by made-hands + draws on
+  //    a KNOWN board is a boardSpec player (NOT a range string, NOT "*").
+  var kk78 = NL.validateQuery({
+    game: 'omaha',
+    players: [
+      { label: 'Hero', range: 'KcKs7h8d' },
+      { label: 'Villain', boardSpec: { twoPair: true, madeStraight: true, wrap: true, topPair: true, openEnder: true } }
+    ],
+    board: '5h4d2c', intent: 'equity',
+    assumptions: 'PLO; villain is board-relative classes resolved to real combos.'
+  });
+  ok('boardSpec: KK78 spot validates', kk78.ok, JSON.stringify(kk78.errors));
+
+  // b) BOARD_SPEC_KEYS is exported and lists the documented keys.
+  ok('BOARD_SPEC_KEYS exported with twoPair/madeStraight/wrap/topPair/openEnder',
+     NL.BOARD_SPEC_KEYS && NL.BOARD_SPEC_KEYS.twoPair && NL.BOARD_SPEC_KEYS.madeStraight &&
+     NL.BOARD_SPEC_KEYS.wrap && NL.BOARD_SPEC_KEYS.topPair && NL.BOARD_SPEC_KEYS.openEnder);
+
+  // c) a boardSpec player with NO board is rejected (needs a board to resolve).
+  var noBoard = NL.validateQuery({
+    game: 'omaha', players: [{ range: 'KcKs7h8d' }, { boardSpec: { set: true } }], intent: 'equity'
+  });
+  ok('boardSpec without a board is rejected', !noBoard.ok &&
+     noBoard.errors.some(function (e) { return e.field === 'board'; }), JSON.stringify(noBoard.errors));
+
+  // d) an unknown boardSpec key is rejected with a clear, key-naming error.
+  var badKey = NL.validateQuery({
+    game: 'omaha', players: [{ range: 'KcKs7h8d' }, { boardSpec: { quads: true } }],
+    board: '5h4d2c', intent: 'equity'
+  });
+  ok('boardSpec unknown key rejected', !badKey.ok &&
+     badKey.errors.some(function (e) { return e.message.indexOf('quads') >= 0; }), JSON.stringify(badKey.errors));
+
+  // e) a non-boolean flag is rejected.
+  var badType = NL.validateQuery({
+    game: 'omaha', players: [{ range: 'KcKs7h8d' }, { boardSpec: { twoPair: 'yes' } }],
+    board: '5h4d2c', intent: 'equity'
+  });
+  ok('boardSpec non-boolean flag rejected', !badType.ok &&
+     badType.errors.some(function (e) { return /must be a boolean/.test(e.message); }), JSON.stringify(badType.errors));
+
+  // f) an EMPTY boardSpec (no real class selected) is rejected — never 0-combo "*".
+  var emptySpec = NL.validateQuery({
+    game: 'omaha', players: [{ range: 'KcKs7h8d' }, { boardSpec: { all: true } }],
+    board: '5h4d2c', intent: 'equity'
+  });
+  ok('boardSpec with no selected class rejected', !emptySpec.ok &&
+     emptySpec.errors.some(function (e) { return /selects no class/.test(e.message); }), JSON.stringify(emptySpec.errors));
+
+  // g) minStraightOuts:N is accepted (numeric key).
+  var numOk = NL.validateQuery({
+    game: 'omaha', players: [{ range: 'KcKs7h8d' }, { boardSpec: { minStraightOuts: 13 } }],
+    board: '5h4d2c', intent: 'equity'
+  });
+  ok('boardSpec minStraightOuts numeric key validates', numOk.ok, JSON.stringify(numOk.errors));
+
+  // h) boardSpec on a doubleboard is rejected (single-board engine).
+  var dbl = NL.validateQuery({
+    game: 'doubleboard', players: [{ range: 'KcKs7h8d' }, { boardSpec: { set: true } }],
+    board1: '5h4d2c', board2: 'AhKdQc', intent: 'equity'
+  });
+  ok('boardSpec on doubleboard rejected', !dbl.ok &&
+     dbl.errors.some(function (e) { return /doubleboard/.test(e.message); }), JSON.stringify(dbl.errors));
+
+  // i) the boardSpec query round-trips through the |||CALC||| wrapper.
+  var rt = runMocked({
+    game: 'omaha',
+    players: [{ label: 'Hero', range: 'KcKs7h8d' },
+              { label: 'V', boardSpec: { twoPair: true, madeStraight: true, wrap: true, topPair: true, openEnder: true } }],
+    board: '5h4d2c', intent: 'equity'
+  });
+  ok('boardSpec survives parse round-trip + validates',
+     rt.parsedOk && rt.query.players[1].boardSpec && rt.query.players[1].boardSpec.wrap === true && rt.validation.ok,
+     JSON.stringify(rt.validation && rt.validation.errors));
+
+  // j) the prompt teaches boardSpec + the cardinality fix.
+  var sp = NL.buildSystemPrompt();
+  ok('prompt teaches the boardSpec object', /BOARD-SPEC/.test(sp) && sp.indexOf('"boardSpec"') >= 0);
+  ok('prompt lists boardSpec flags (twoPair/wrap/openEnder/topPair)',
+     /twoPair/.test(sp) && /wrap /.test(sp) && /openEnder/.test(sp) && /topPair/.test(sp));
+  ok('prompt says boardSpec is NOT "*" and NOT a range string', /never "\*"|DO NOT write "\*"/.test(sp));
+  ok('prompt teaches the representative-board CARDINALITY fix (set != quads)',
+     /REPRESENTATIVE-BOARD CARDINALITY/.test(sp) && /EXACTLY ONE/.test(sp) && /QUADS/.test(sp));
+  ok('prompt has the boardSpec few-shot (KK78-style)', sp.indexOf('"boardSpec"') >= 0 && /any two pair/.test(sp));
+})();
+
+/* ================================================================== */
 /* SUMMARY                                                             */
 /* ================================================================== */
 console.log('\n' + (fail === 0 ? 'ALL PASS' : 'SOME FAILED'));
