@@ -220,14 +220,24 @@
 
     const range = percentRange(game, lo, hi);
     const flat = range._ensureFlat(); // array of legal concrete hands (by combos)
-    const opponentRangeCombos = range.totalCombos;
-    if (flat.length === 0) {
-      return { equity: 0, trials: 0, opponentRangeCombos };
-    }
 
     // Blocked cards = hero + board + dead. Opponent samples must avoid these and
     // each other across the N opponents.
     const blockedBase = new Set([...heroHand, ...board, ...dead]);
+
+    // opponentRangeCombos must reflect cards actually AVAILABLE: a combo using any
+    // blocked card can't be held. Counting range.totalCombos (the pre-dead total)
+    // overstated the range ~2x with a board present. Count surviving flat combos.
+    let opponentRangeCombos = 0;
+    for (let fi = 0; fi < flat.length; fi++) {
+      const h = flat[fi];
+      let blocked = false;
+      for (let ci = 0; ci < h.length; ci++) { if (blockedBase.has(h[ci])) { blocked = true; break; } }
+      if (!blocked) opponentRangeCombos++;
+    }
+    if (flat.length === 0) {
+      return { equity: 0, trials: 0, opponentRangeCombos: 0 };
+    }
 
     // Remaining deck (for board runout) excluding hero+board+dead. Opponent
     // cards are removed per-trial.
