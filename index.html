@@ -351,7 +351,13 @@ table.results-table .equity-cell { font-weight: bold; }
       <div class="game-tabs" id="game-tabs">
         <button class="game-tab" data-game="holdem" onclick="selectGameTab('holdem')">Hold'em</button>
         <button class="game-tab active" data-game="omaha" onclick="selectGameTab('omaha')">Omaha</button>
-        <button class="game-tab" data-game="doubleboard" onclick="selectGameTab('doubleboard')">DBBP</button>
+        <button class="game-tab" data-game="doubleboard" onclick="selectGameTab('doubleboard')" title="Double Board PLO Bomb Pot">DBBP</button>
+      </div>
+
+      <div id="dbbp-info" style="display:none;margin:6px 0 10px;padding:8px 10px;background:#1c1c1c;border:1px solid #333;border-radius:6px;font-size:11.5px;line-height:1.5;color:#bbb;">
+        <strong style="color:#ddd;">Double Board PLO Bomb Pot.</strong>
+        Each player gets <strong>4 cards</strong> (uses exactly 2). <strong>Two boards</strong> run out and the pot splits in half, one half per board.
+        Winning <strong>both</strong> boards = a <strong>scoop</strong>. Leave the boards empty for a full preflop run-out.
       </div>
 
       <div id="board-section-single">
@@ -514,8 +520,11 @@ function addHandSlot() {
   if (filterBtn) {
     filterBtn.addEventListener('click', function(e) {
       e.stopPropagation();
-      closeAllFilterMenus();
       const menu = document.getElementById('filter-menu-' + n);
+      if (!menu) return;
+      const wasOpen = menu.classList.contains('open');
+      closeAllFilterMenus();
+      if (wasOpen) return; // clicking the button again closes the menu instead of re-opening it
       buildFilterMenu(n, menu);
       menu.classList.add('open');
     });
@@ -909,8 +918,10 @@ function onGameTypeChange() {
   const gt = document.getElementById('game-type').value;
   document.getElementById('board-section-single').style.display = gt === 'doubleboard' ? 'none' : 'block';
   document.getElementById('board-section-double').style.display = gt === 'doubleboard' ? 'block' : 'none';
-  // update placeholders
-  const ph = gt === 'holdem' ? 'e.g. AhKs' : 'e.g. AhKsQdJc';
+  const dbbpInfo = document.getElementById('dbbp-info');
+  if (dbbpInfo) dbbpInfo.style.display = gt === 'doubleboard' ? 'block' : 'none';
+  // update placeholders (PLO games take exactly 4 cards per hand)
+  const ph = gt === 'holdem' ? 'e.g. AhKs (2 cards)' : 'e.g. AhKsQdJc (4 cards)';
   document.querySelectorAll('#hands-container input').forEach(inp => inp.placeholder = ph);
 }
 
@@ -1389,15 +1400,18 @@ function runSimulation() {
               const rem = []; for (let i = 0; i < 52; i++) { if (!au.has(i)) rem.push(i); }
               const r = isOmaha2 ? simulateOmaha(mh, bc, rem, 10000) : simulateHoldem(mh, bc, rem, 10000);
               const rEq = r.equities || r.equity || [];
-              totalHeroEq2 += (rEq[0] || 0) * r.trials;
-              totalOppEq2 += (rEq[1] || 0) * r.trials;
+              // Each opponent combo is one equally-likely holding, so average the per-combo
+              // equities flatly (divide by combo count below). Weighting by trial count biased
+              // the result whenever combos had differing trial counts (e.g. postflop exhaustive).
+              totalHeroEq2 += (rEq[0] || 0);
+              totalOppEq2 += (rEq[1] || 0);
               totalTrials2 += r.trials;
             }
           }
           // Update progress in results area
           const pct = Math.round(idx2 / combosToRun.length * 100);
           const bar = '█'.repeat(Math.round(pct / 5)) + '░'.repeat(20 - Math.round(pct / 5));
-          const runEq = isDB ? (idx2 > 0 ? (heroOverall2/idx2*100).toFixed(1) : '...') : (totalTrials2 > 0 ? (totalHeroEq2/totalTrials2*100).toFixed(1) : '...');
+          const runEq = isDB ? (idx2 > 0 ? (heroOverall2/idx2*100).toFixed(1) : '...') : (idx2 > 0 ? (totalHeroEq2/idx2*100).toFixed(1) : '...');
           resultsArea.innerHTML = '<p class="loading">⏳ ' + idx2 + '/' + combosToRun.length + ' combos [' + bar + '] ' + pct + '%<br>📊 Running equity: ' + runEq + '%</p>';
 
           if (idx2 < combosToRun.length) {
@@ -1407,7 +1421,8 @@ function runSimulation() {
             const n = combosToRun.length;
             const gameNames = { holdem: "Hold'em", omaha: 'Omaha (PLO4)', doubleboard: 'Double Board PLO' };
             let html = '<h3>' + gameNames[gameType] + ' vs Range</h3>';
-            html += '<p>vs ' + rangeDesc + ' (' + allOppHands.length + ' sampled combos)</p>';
+            const comboLabel = n < allOppHands.length ? (n + ' of ' + allOppHands.length + ' combos sampled') : (n + ' combos');
+            html += '<p>vs ' + rangeDesc + ' (' + comboLabel + ')</p>';
             if (isDB) {
               if (board1Cards.length > 0) html += '<p><strong>Board 1:</strong> ' + cardsToHTML(board1Cards) + '</p>';
               if (board2Cards.length > 0) html += '<p><strong>Board 2:</strong> ' + cardsToHTML(board2Cards) + '</p>';
@@ -1424,8 +1439,8 @@ function runSimulation() {
               html += '<td>' + (oppScoop2/n*100).toFixed(2) + '%</td></tr>';
               html += '</tbody></table>';
             } else {
-              const heroEq = (totalHeroEq2 / totalTrials2 * 100).toFixed(2);
-              const oppEq = (totalOppEq2 / totalTrials2 * 100).toFixed(2);
+              const heroEq = (totalHeroEq2 / n * 100).toFixed(2);
+              const oppEq = (totalOppEq2 / n * 100).toFixed(2);
               if (boardCards.length > 0) html += '<p><strong>Board:</strong> ' + cardsToHTML(boardCards) + '</p>';
               html += '<table class="results-table"><thead><tr><th>Hand</th><th>Equity</th></tr></thead><tbody>';
               html += '<tr><td>Hero ' + cardsToHTML(heroHand) + '</td><td><strong>' + heroEq + '%</strong></td></tr>';
@@ -1471,17 +1486,18 @@ function runSimulation() {
               const rem=[];for(let i=0;i<52;i++){if(!au.has(i))rem.push(i);}
               const r=(gameType==='omaha'?simulateOmaha:simulateHoldem)(mh,bc,rem,10000);
               const eq=r.equities||r.equity||[];
-              totalHeroEq3+=(eq[0]||0)*r.trials;totalTrials3+=r.trials;
+              totalHeroEq3+=(eq[0]||0);totalTrials3+=r.trials; // flat per-combo average (see processRangeChunk)
             }
           }
           const pct=Math.round(idx3/combosToRun2.length*100);
           const bar='█'.repeat(Math.round(pct/5))+'░'.repeat(20-Math.round(pct/5));
-          const runEq=isDB2?(idx3>0?(heroOv3/idx3*100).toFixed(1):'...'):(totalTrials3>0?(totalHeroEq3/totalTrials3*100).toFixed(1):'...');
+          const runEq=isDB2?(idx3>0?(heroOv3/idx3*100).toFixed(1):'...'):(idx3>0?(totalHeroEq3/idx3*100).toFixed(1):'...');
           resultsArea.innerHTML='<p class="loading">⏳ '+idx3+'/'+combosToRun2.length+' ['+bar+'] '+pct+'%<br>📊 Equity: '+runEq+'%</p>';
           if(idx3<combosToRun2.length){setTimeout(procChunk3,0);}else{
             const n=combosToRun2.length;
             const gn={holdem:"Hold'em",omaha:'Omaha (PLO4)',doubleboard:'Double Board PLO'};
-            let html='<h3>'+gn[gameType]+' vs Range</h3><p>vs '+rangeDesc2+' ('+allOppHands2.length+' sampled combos)</p>';
+            const comboLabel2 = n < allOppHands2.length ? (n + ' of ' + allOppHands2.length + ' combos sampled') : (n + ' combos');
+            let html='<h3>'+gn[gameType]+' vs Range</h3><p>vs '+rangeDesc2+' ('+comboLabel2+')</p>';
             if(isDB2){
               if(board1Cards.length>0)html+='<p><strong>Board 1:</strong> '+cardsToHTML(board1Cards)+'</p>';
               if(board2Cards.length>0)html+='<p><strong>Board 2:</strong> '+cardsToHTML(board2Cards)+'</p>';
@@ -1490,7 +1506,7 @@ function runSimulation() {
               html+='<tr><td>'+rangeDesc2+'</td><td><strong>'+(oppOv3/n*100).toFixed(2)+'%</strong></td><td>'+(oB13/n*100).toFixed(2)+'%</td><td>'+(oB23/n*100).toFixed(2)+'%</td><td>'+(oSc3/n*100).toFixed(2)+'%</td></tr>';
               html+='</tbody></table>';
             }else{
-              const heroEq3=(totalHeroEq3/totalTrials3*100).toFixed(2);
+              const heroEq3=(totalHeroEq3/n*100).toFixed(2);
               if(boardCards.length>0)html+='<p><strong>Board:</strong> '+cardsToHTML(boardCards)+'</p>';
               html+='<table class="results-table"><thead><tr><th>Hand</th><th>Equity</th></tr></thead><tbody>';
               html+='<tr><td>Hero '+cardsToHTML(heroHand)+'</td><td><strong>'+heroEq3+'%</strong></td></tr>';
@@ -1586,23 +1602,24 @@ function runSimulation() {
             for (let i = 0; i < 52; i++) { if (!allUsed.has(i)) rem.push(i); }
             const r = simulateHoldem(matchHands, boardCards, rem, 10000);
             const rEq3 = r.equities || r.equity || [];
-            totalHeroEq += (rEq3[0] || 0) * r.trials;
-            totalOppEq += (rEq3[1] || 0) * r.trials;
+            // Flat per-combo average (divide by combo count below), matching processRangeChunk.
+            totalHeroEq += (rEq3[0] || 0);
+            totalOppEq += (rEq3[1] || 0);
             totalTrials += r.trials;
           }
 
           // Update progress
           const pct = Math.round(sliderIdx / allOppHands.length * 100);
           const bar = '\u2588'.repeat(Math.round(pct / 5)) + '\u2591'.repeat(20 - Math.round(pct / 5));
-          const runEq = totalTrials > 0 ? (totalHeroEq / totalTrials * 100).toFixed(1) : '...';
+          const runEq = sliderIdx > 0 ? (totalHeroEq / sliderIdx * 100).toFixed(1) : '...';
           resultsArea.innerHTML = '<p class="loading">\u23F3 ' + sliderIdx + '/' + allOppHands.length + ' combos [' + bar + '] ' + pct + '%<br>\uD83D\uDCCA Running equity: ' + runEq + '%</p>';
 
           if (sliderIdx < allOppHands.length) {
             setTimeout(processSliderRangeChunk, 0);
           } else {
             // Done — render results
-            const heroEq = (totalHeroEq / totalTrials * 100).toFixed(2);
-            const oppEq = (totalOppEq / totalTrials * 100).toFixed(2);
+            const heroEq = (totalHeroEq / allOppHands.length * 100).toFixed(2);
+            const oppEq = (totalOppEq / allOppHands.length * 100).toFixed(2);
 
             let html = '<h3>Hold\'em Simulation</h3>';
             html += '<p>' + allOppHands.length + ' opponent combos in ' + rangeDesc + ' range</p>';
@@ -1901,8 +1918,14 @@ function simHoldem(hands, boardCards, remaining, maxTrials) {
   const nP = hands.length;
   const mt = maxTrials || 100000;
   const totalCombos = numToRun === 0 ? 1 : comb(remaining.length, numToRun);
-  const exhaustive = totalCombos <= mt;
-  const trials = exhaustive ? totalCombos : mt;
+  // Enumerate exactly when the runout space is small enough to finish fast (~2s) — this makes
+  // every postflop spot exact and effectively instant. For large spaces (heads-up preflop is
+  // C(48,5)=1.7M boards, which took ~15s to fully enumerate) fall back to a high-count Monte
+  // Carlo (200k trials, stable to ~0.1%, ~2s) instead of freezing the UI. Range mode passes
+  // maxTrials explicitly (10k/combo) and keeps its own cap so wide ranges stay fast.
+  const exhaustCap = maxTrials ? mt : 200000;
+  const exhaustive = totalCombos <= exhaustCap;
+  const trials = exhaustive ? totalCombos : (maxTrials ? mt : 200000);
   const wins = new Array(nP).fill(0), ties = new Array(nP).fill(0);
   let tt = 0;
   if (exhaustive && numToRun > 0) {
@@ -1981,13 +2004,20 @@ function simDoubleBoard(hands, b1Cards, b2Cards, remaining, maxTrials) {
 self.onmessage = function(e) {
   const d = e.data;
   if (d.type === 'simulate') {
-    const { gameType, hands, board, board1, board2, remaining, maxTrials } = d;
-    let result;
-    if (gameType === 'holdem') result = simHoldem(hands, board, remaining, maxTrials);
-    else if (gameType === 'omaha') result = simOmaha(hands, board, remaining, maxTrials);
-    else result = simDoubleBoard(hands, board1, board2, remaining, maxTrials);
-    self.postMessage({ type: 'result', data: result });
+    try {
+      const { gameType, hands, board, board1, board2, remaining, maxTrials } = d;
+      let result;
+      if (gameType === 'holdem') result = simHoldem(hands, board, remaining, maxTrials);
+      else if (gameType === 'omaha') result = simOmaha(hands, board, remaining, maxTrials);
+      else result = simDoubleBoard(hands, board1, board2, remaining, maxTrials);
+      self.postMessage({ type: 'result', data: result });
+    } catch (err) {
+      self.postMessage({ type: 'error', message: (err && err.message) ? err.message : String(err) });
+    }
   }
+};
+self.onerror = function(ev) {
+  self.postMessage({ type: 'error', message: (ev && ev.message) ? ev.message : 'Worker error' });
 };
 `;
 
@@ -2009,7 +2039,12 @@ function getSimWorker() {
 // Local Engine Server (poker-odds-calc via Node.js)
 // ============================================================
 const ENGINE_URL = 'http://localhost:3847';
-let serverAvailable = null; // null = unknown, true/false = cached
+// The local dev engine (server.js) only exists when running on localhost. In the static
+// production deploy there is no server, so attempting the fetch caused a ~1s stall plus a
+// mixed-content block + console errors on every first Simulate. Skip it entirely unless we
+// are actually on localhost so production goes straight to the in-browser engine.
+const IS_LOCAL_DEV = (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+let serverAvailable = IS_LOCAL_DEV ? null : false; // null = unknown, true/false = cached
 
 function cardIndicesToStrings(indices) {
   return indices.map(i => {
@@ -2079,13 +2114,39 @@ async function simulateViaServer(gameType, hands, boardCards, board1Cards, board
 function simulateInWorker(msg) {
   return new Promise((resolve, reject) => {
     const worker = getSimWorker();
+    let settled = false;
+    const cleanup = () => {
+      worker.removeEventListener('message', handler);
+      worker.removeEventListener('error', onErr);
+    };
+    // Tear down a dead worker so the next run rebuilds a fresh one (and don't leak the blob URL).
+    const killWorker = () => {
+      try { if (simWorker) simWorker.terminate(); } catch (_) {}
+      try { if (simWorkerUrl) { URL.revokeObjectURL(simWorkerUrl); simWorkerUrl = null; } } catch (_) {}
+      simWorker = null;
+    };
     const handler = function(e) {
+      if (settled || !e.data) return;
       if (e.data.type === 'result') {
-        worker.removeEventListener('message', handler);
-        resolve(e.data.data);
+        settled = true; cleanup(); resolve(e.data.data);
+      } else if (e.data.type === 'error') {
+        settled = true; cleanup(); killWorker();
+        reject(new Error(e.data.message || 'Worker error'));
       }
     };
+    const onErr = function(err) {
+      if (settled) return;
+      settled = true; cleanup(); killWorker();
+      reject(new Error((err && err.message) ? err.message : 'Worker crashed'));
+    };
     worker.addEventListener('message', handler);
+    worker.addEventListener('error', onErr);
+    // Hard safety net: never let the UI hang on "Simulating..." forever.
+    setTimeout(() => {
+      if (settled) return;
+      settled = true; cleanup(); killWorker();
+      reject(new Error('Simulation timed out'));
+    }, 60000);
     worker.postMessage(msg);
   });
 }
@@ -2337,14 +2398,19 @@ function displayResults(gameType, hands, handLabels, boardCards, board1Cards, bo
   html += '<div class="results-title">' + gameNames[gameType] + ' Simulation</div>';
 
   const methodStr = results.exhaustive ? 'Exhaustive' : 'Monte Carlo';
-  const trialCount = results.trials !== undefined ? results.trials : results.trials;
+  const trialCount = results.trials;
   html += '<div class="results-info">' + trialCount.toLocaleString() + ' trials (' + methodStr + ')</div>';
 
   if (gameType === 'doubleboard') {
     if (board1Cards.length > 0) html += '<div class="results-board">Board 1: ' + formatCards(board1Cards) + '</div>';
     if (board2Cards.length > 0) html += '<div class="results-board">Board 2: ' + formatCards(board2Cards) + '</div>';
 
-    html += '<table class="results-table"><tr><th>Hand</th><th>Overall Equity</th><th>Board 1 Equity</th><th>Board 2 Equity</th><th>Scoop %</th></tr>';
+    html += '<table class="results-table"><tr>'
+      + '<th>Hand</th>'
+      + '<th title="Total share of the pot = average of your Board 1 and Board 2 equity">Overall Equity</th>'
+      + '<th title="Your share of the half-pot awarded on Board 1">Board 1 Equity</th>'
+      + '<th title="Your share of the half-pot awarded on Board 2">Board 2 Equity</th>'
+      + '<th title="How often you win BOTH boards (take the whole pot)">Scoop %</th></tr>';
     for (let i = 0; i < hands.length; i++) {
       html += '<tr>';
       html += '<td style="font-family:monospace;">' + formatCards(hands[i]) + '</td>';
@@ -2355,6 +2421,7 @@ function displayResults(gameType, hands, handLabels, boardCards, board1Cards, bo
       html += '</tr>';
     }
     html += '</table>';
+    html += '<p style="font-size:11px;color:#888;margin-top:6px;">Overall = average of Board 1 &amp; Board 2 equity (pot splits half per board). Scoop% = how often you win both boards.</p>';
   } else {
     if (boardCards.length > 0) html += '<div class="results-board">Board: ' + formatCards(boardCards) + '</div>';
 
