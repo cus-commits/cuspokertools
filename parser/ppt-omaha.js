@@ -322,6 +322,39 @@ function andAll(preds) {
  * ------------------------------------------------------------------ */
 
 function macroPredicate(tok) {
+  // Per-card rank-floor / rank-ceiling / rank-window macros. These fill the
+  // gap where a class macro ($R/$B/$M/...) is a FIXED set of ranks but the user
+  // wants "all four cards >= rank X" for an arbitrary X (e.g. "all cards nine
+  // or higher"). PPT-style, unambiguous, and not collidable with "T+" (which in
+  // Omaha already means pair-of-T-or-better).
+  //   $9+   -> every one of the four cards is rank 9 or higher
+  //   $T-   -> every one of the four cards is rank T or LOWER
+  //   $9-Q  -> every one of the four cards is within ranks 9..Q inclusive
+  var floorM = tok.match(/^\$([2-9TJQKA])\+$/i);
+  if (floorM) {
+    var fr = rankCharToIdx(floorM[1]);
+    return function (f) {
+      for (var i = 0; i < 4; i++) if (f.ranks[i] < fr) return false;
+      return true;
+    };
+  }
+  var ceilM = tok.match(/^\$([2-9TJQKA])-$/i);
+  if (ceilM) {
+    var cr = rankCharToIdx(ceilM[1]);
+    return function (f) {
+      for (var i = 0; i < 4; i++) if (f.ranks[i] > cr) return false;
+      return true;
+    };
+  }
+  var winM = tok.match(/^\$([2-9TJQKA])-([2-9TJQKA])$/i);
+  if (winM) {
+    var w1 = rankCharToIdx(winM[1]), w2 = rankCharToIdx(winM[2]);
+    var wLo = Math.min(w1, w2), wHi = Math.max(w1, w2);
+    return function (f) {
+      for (var i = 0; i < 4; i++) if (f.ranks[i] < wLo || f.ranks[i] > wHi) return false;
+      return true;
+    };
+  }
   switch (tok) {
     case '$np': // no pair: all four ranks distinct
       return function (f) { return f.distinctRanks.length === 4; };

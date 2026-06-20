@@ -659,6 +659,39 @@ throws('bad suit char "AxAhKsKd"? actually valid pattern; use "Az9z" bad rank',
 })();
 
 /* ----------------------------------------------------------------
+ * 15. Per-card rank-FLOOR / ceiling / window macros ($9+ / $9- / $9-Q).
+ *   These fill the "all four cards N or higher" gap (no fixed class fit).
+ *   Each is brute-forced over the full space.
+ * ---------------------------------------------------------------- */
+(function () {
+  // $9+ : every card rank >= 9 (rank idx 7). 6 ranks {9,T,J,Q,K,A} = 24 cards.
+  var exp9plus = 0, expTplus = 0, exp9minus = 0, exp9toQ = 0, exp9plusPair = 0;
+  I.forEachHand(function (a, b, c, d) {
+    var f = I.features(a, b, c, d);
+    var rs = f.ranks;
+    var all9 = rs.every(function (r) { return r >= 7; });
+    var allT = rs.every(function (r) { return r >= 8; });
+    var le9 = rs.every(function (r) { return r <= 7; });
+    var in9Q = rs.every(function (r) { return r >= 7 && r <= 10; });
+    var hasPair = false;
+    for (var k in f.rankCount) if (f.rankCount[k] >= 2) hasPair = true;
+    if (all9) exp9plus++;
+    if (allT) expTplus++;
+    if (le9) exp9minus++;
+    if (in9Q) exp9toQ++;
+    if (all9 && hasPair) exp9plusPair++;
+  });
+  eq('$9+ (all four cards >= 9) matches brute-force', countMatchesFast('$9+'), exp9plus);
+  eq('$T+ (all four cards >= T) equals $R broadway count', countMatchesFast('$T+'), expTplus);
+  eq('$T+ === $R count', countMatchesFast('$T+'), countMatchesFast('$R'));
+  eq('$9- (all four cards <= 9) matches brute-force', countMatchesFast('$9-'), exp9minus);
+  eq('$9-Q (all four cards within 9..Q) matches brute-force', countMatchesFast('$9-Q'), exp9toQ);
+  eq('$9+:RR (all >=9 AND at least one pair) matches brute-force', countMatchesFast('$9+:RR'), exp9plusPair);
+  eq('$2+ (all four cards >= 2) = whole space', countMatchesFast('$2+'), TOTAL);
+  console.log('      ($9+=' + exp9plus + ', $9+:RR=' + exp9plusPair + ')');
+})();
+
+/* ----------------------------------------------------------------
  * Summary
  * ---------------------------------------------------------------- */
 console.log('\n=== SUMMARY ===');

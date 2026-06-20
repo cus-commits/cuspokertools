@@ -130,6 +130,10 @@ var FEW_SHOTS = [
     a: { game: 'omaha', players: [{ label: 'Rundown', range: 'AKQJ-T987:$ds' }, { label: 'Aces', range: 'AA' }], intent: 'equity' }
   },
   {
+    q: 'in PLO villain has four cards all nine or higher with at least one pair, hero has the double-suited KQJT rundown',
+    a: { game: 'omaha', players: [{ label: 'Hero', range: 'KQJT$ds' }, { label: 'Villain', range: '$9+:RR' }], intent: 'equity' }
+  },
+  {
     q: 'how often does AA flop a set in holdem?',
     a: null,
     note: 'UNSUPPORTED. The engine computes hand-vs-hand/range equity on a given board, not "frequency of flopping X" probabilities. Set intent to "equity" only when the question maps to an equity matchup; otherwise return an "unsupported" note instead of a query.'
@@ -194,7 +198,17 @@ function buildSystemPrompt(opts) {
 '    - named ranks: AA, AAKK, AKQ ; pair-of + structure: AALL, AARR',
 '    - rank variables: RR, RROO (two pair), RRON ; mixed: JRON',
 '    - rundowns: AKQJ ; rundown range: AKQJ-T987, 9876- ; gaps: $0g, $1g, $2g',
-'    - rank-class macros (all four cards in class): $B $M $Z $W $L $F $R ; $np (no pair), $nt (no trips)',
+'    - rank-class macros (ALL FOUR cards fall in the class). The classes are FIXED rank sets:',
+'        $B = big (A,K,Q,J)   $F = face (K,Q,J)   $R = broadway (A,K,Q,J,T)',
+'        $M = mid (T,9,8,7)   $Z = small (6,5,4,3,2)   $W = wheel (A,5,4,3,2)   $L = low (A,8,7,6,5,4,3,2)',
+'      (Do NOT guess a macro means something else — e.g. $W is the WHEEL, NOT "broadway".)',
+'    - rank-FLOOR / window macros (ALL FOUR cards satisfy a rank bound). USE THESE for',
+'      "all cards N or higher / N or lower / between X and Y" when no fixed class fits:',
+'        $9+  = every card rank >= 9     $T+ = every card >= T (same as $R)     $8+ = every card >= 8',
+'        $9-  = every card rank <= 9     $9-Q = every card within 9..Q inclusive',
+'      ("all four cards nine or higher" -> $9+ ; do NOT misuse $W/$R/$B which are fixed sets.)',
+'    - "has at least one pair" filter: RR (some rank appears >= 2). Combine with : e.g. $9+:RR',
+'      = all four cards nine-plus AND at least one pair.  $np (no pair), $nt (no trips)',
 '    - suit variables (4 rank+suit-letter pairs): AxAyKxKy (AA-KK double-suited), AxAyKxKz (AA single-suited w/ KK)',
 '    - explicit 4 cards: AsAhKsKd',
 '',

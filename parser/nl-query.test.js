@@ -83,7 +83,15 @@ var POSITIVE = [
 
   { name: 'omaha suit-variable double-suited AA-KK vs broadway macro',
     q: 'double-suited aces and kings vs all-broadway hands in omaha',
-    query: { game: 'omaha', players: [{ range: 'AxAyKxKy' }, { range: '$R' }], intent: 'equity' } }
+    query: { game: 'omaha', players: [{ range: 'AxAyKxKy' }, { range: '$R' }], intent: 'equity' } },
+
+  { name: 'omaha per-card rank-floor + pair ($9+:RR)',
+    q: 'KQJT double suited vs four cards all nine or higher with at least a pair, omaha',
+    query: { game: 'omaha', players: [{ range: 'KQJT$ds' }, { range: '$9+:RR' }], intent: 'equity' } },
+
+  { name: 'omaha rank-window macro ($9-Q)',
+    q: 'aces vs four cards all between nine and queen in PLO',
+    query: { game: 'omaha', players: [{ range: 'AA' }, { range: '$9-Q' }], intent: 'equity' } }
 ];
 
 POSITIVE.forEach(function (tc) {
@@ -197,6 +205,9 @@ expectError('reject: range blocked to 0 combos by the BOARD (not dead)',
   ok('prompt has the AA-vs-20% Omaha few-shot', sp.indexOf('"20%"') >= 0 && sp.indexOf('omaha') >= 0);
   ok('prompt lists Omaha $ds', sp.indexOf('$ds') >= 0);
   ok('prompt has DO NOT EMIT / UNSUPPORTED section', /DO NOT EMIT|UNSUPPORTED/.test(sp));
+  // Macros must be DEFINED (the LLM previously guessed $W="broadway"; it is the wheel).
+  ok('prompt defines $W as the wheel (not broadway)', /\$W\s*=\s*wheel/i.test(sp));
+  ok('prompt teaches per-card rank-floor macro $9+', sp.indexOf('$9+') >= 0 && /every card rank >= 9/i.test(sp));
 })();
 
 /* ================================================================== */
