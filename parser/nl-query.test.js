@@ -208,6 +208,163 @@ expectError('reject: range blocked to 0 combos by the BOARD (not dead)',
   // Macros must be DEFINED (the LLM previously guessed $W="broadway"; it is the wheel).
   ok('prompt defines $W as the wheel (not broadway)', /\$W\s*=\s*wheel/i.test(sp));
   ok('prompt teaches per-card rank-floor macro $9+', sp.indexOf('$9+') >= 0 && /every card rank >= 9/i.test(sp));
+  // NEW: the smarter-interpretation upgrades must be present in the prompt.
+  ok('prompt has the ASSUMPTIONS field instructions', /ASSUMPTIONS FIELD/.test(sp) && /assumptions/.test(sp));
+  ok('prompt teaches GAME DETECTION (holdem vs PLO cues)', /GAME DETECTION/.test(sp) && /top set WITH/i.test(sp));
+  ok('prompt teaches BOARD-RELATIVE concepts', /BOARD-RELATIVE CONCEPTS/.test(sp) && /flush draw/i.test(sp) && /top set/i.test(sp));
+  ok('prompt teaches CONTRADICTION handling (never crash)', /CONTRADICTIONS|IMPOSSIBLE INPUT/i.test(sp));
+  // The PLO "top set with 8-9" case now ASKS (the flush-draw board suits are
+  // material + plausibly forgotten), and the 7789 reading still appears in it.
+  ok('prompt has the PLO "top set with 8-9" -> 7789 few-shot (now a CLARIFY)', sp.indexOf('7789') >= 0 && /PLO read/.test(sp));
+  ok('prompt instructs to ASK for flush-draw board suits when material', /ASK which suit|ASK for the specifics|invent \+ STATE/i.test(sp));
+})();
+
+/* ================================================================== */
+/* ASSUMPTIONS FIELD — schema, validation, and rendering              */
+/* ================================================================== */
+(function () {
+  // a) schema documents the assumptions field
+  ok('schema documents assumptions field',
+     NL.STRUCTURED_QUERY_SCHEMA.fields.assumptions !== undefined);
+
+  // b) a query WITH an assumptions string still validates (it's optional + free text)
+  var withAssump = NL.validateQuery({
+    game: 'omaha',
+    players: [{ label: 'Hero', range: '7789' }, { label: 'Villain', range: '88,8$ss,85' }],
+    board: '6c4c7h', intent: 'equity',
+    assumptions: 'Read as PLO; assumed two clubs on the board so a flush draw is possible.'
+  });
+  ok('query with a valid assumptions string validates', withAssump.ok, JSON.stringify(withAssump.errors));
+
+  // c) a NON-string assumptions value is rejected with a clear, field-named error
+  var badAssump = NL.validateQuery({
+    game: 'holdem', players: [{ range: 'AA' }, { range: 'KK' }], intent: 'equity',
+    assumptions: { not: 'a string' }
+  });
+  ok('non-string assumptions is rejected', !badAssump.ok);
+  ok('non-string assumptions error names the field',
+     badAssump.errors.some(function (e) { return e.field === 'assumptions'; }), JSON.stringify(badAssump.errors));
+
+  // d) a query that round-trips through the |||CALC||| wrapper keeps assumptions
+  var roundTrip = runMocked({
+    game: 'omaha', players: [{ range: '7789' }, { range: '88,8$ss,85' }],
+    board: '6c4c7h', intent: 'equity',
+    assumptions: 'PLO reading: top set of 7s plus 8-9 = 7789; assumed two-club board.'
+  });
+  ok('assumptions survives parseLLMResponse round-trip',
+     roundTrip.parsedOk && roundTrip.query.assumptions &&
+     roundTrip.query.assumptions.indexOf('7789') >= 0, JSON.stringify(roundTrip.query && roundTrip.query.assumptions));
+
+  // e) formatResultBlock RENDERS an INTERPRETATION / ASSUMPTIONS section verbatim
+  var blockWith = NL.formatResultBlock(
+    { game: 'omaha', players: [{ label: 'Hero', range: '7789' }, { label: 'V', range: '88,8$ss,85' }],
+      board: '6c4c7h', assumptions: 'Assumed two clubs so a flush draw is possible.' },
+    { players: [{ label: 'Hero', range: '7789', equity: 80, combos: 96, exact: true },
+                { label: 'V', range: '88,8$ss,85', equity: 20, combos: 4936, exact: false, trials: 60000 }] });
+  ok('result block has an INTERPRETATION / ASSUMPTIONS section',
+     /INTERPRETATION \/ ASSUMPTIONS/.test(blockWith));
+  ok('result block prints the assumptions text verbatim',
+     blockWith.indexOf('Assumed two clubs so a flush draw is possible.') >= 0);
+  ok('result block still shows the EXACT SYNTAX (math kept)',
+     /EXACT SYNTAX/.test(blockWith) && blockWith.indexOf('7789') >= 0);
+
+  // f) when NO assumptions are given, the section still appears and says so
+  //    (the user must NEVER be left unable to see how their words were read)
+  var blockNo = NL.formatResultBlock(
+    { game: 'holdem', players: [{ label: 'Hero', range: 'AA' }, { label: 'V', range: 'KK' }] },
+    { players: [{ label: 'Hero', range: 'AA', equity: 82, combos: 6, exact: true },
+                { label: 'V', range: 'KK', equity: 18, combos: 6, exact: true }] });
+  ok('result block shows the INTERPRETATION section even with no assumptions',
+     /INTERPRETATION \/ ASSUMPTIONS/.test(blockNo) && /none stated/i.test(blockNo));
+})();
+
+/* ================================================================== */
+/* DOUBLEBOARD = PLO: ranges validate with the 4-card Omaha grammar    */
+/* ================================================================== */
+(function () {
+  // Regression: doubleboard is PLO (the engine deals 4-card Omaha holdings),
+  // so PLO-only tokens (AA$ds, rundown dashes, RROO) MUST validate. Before the
+  // fix these were wrongly rejected because doubleboard used the Hold'em parser.
+  var v = NL.validateQuery({
+    game: 'doubleboard',
+    players: [{ label: 'Hero', range: 'AA$ds' },
+              { label: 'Rundowns', range: 'AKQJ-T987' },
+              { label: 'TwoPair+', range: 'RROO' }],
+    intent: 'equity'
+  });
+  ok('doubleboard accepts PLO-only ranges (AA$ds / rundown / RROO)', v.ok, JSON.stringify(v.errors));
+  ok('HAND_LEN.doubleboard is 4 (PLO), not 2', NL.HAND_LEN.doubleboard === 4);
+
+  // A range that is NOT valid Omaha must still be rejected on a doubleboard.
+  var bad = NL.validateQuery({
+    game: 'doubleboard', players: [{ range: 'AA' }, { range: 'ZZZ' }], intent: 'equity'
+  });
+  ok('doubleboard still rejects a garbage Omaha range', !bad.ok &&
+     bad.errors.some(function (e) { return e.range === 'ZZZ' || (e.message && e.message.indexOf('ZZZ') >= 0); }),
+     JSON.stringify(bad.errors));
+})();
+
+/* ================================================================== */
+/* CLARIFY PARSE PATH — the third output type (ask the user)           */
+/* ================================================================== */
+(function () {
+  // a) a well-formed CLARIFY block parses to { ok:false, clarify:true, questions, note }
+  var clarifyText = 'Quick check first.\n|||CLARIFY|||' +
+    JSON.stringify({ questions: ['Was the flop two of a suit, and which suit?', 'What were your two overcards?'],
+                     note: 'The flush draw moves the equity and the suits were not stated.' }) +
+    '|||END|||';
+  var c = NL.parseLLMResponse(clarifyText);
+  ok('CLARIFY parses to ok:false + clarify:true', c.ok === false && c.clarify === true, JSON.stringify(c));
+  ok('CLARIFY surfaces the questions array', Array.isArray(c.questions) && c.questions.length === 2, JSON.stringify(c.questions));
+  ok('CLARIFY carries the note line', typeof c.note === 'string' && /flush draw/.test(c.note), c.note);
+  ok('CLARIFY is NOT mistaken for a CALC query', c.query === undefined && c.unsupported === undefined);
+
+  // b) blank / whitespace questions are filtered; an empty list is an error
+  var emptyClarify = NL.parseLLMResponse('|||CLARIFY|||' + JSON.stringify({ questions: ['', '  '], note: 'x' }) + '|||END|||');
+  ok('CLARIFY with no real questions is an error', emptyClarify.ok === false && !emptyClarify.clarify && /no questions/i.test(emptyClarify.error), JSON.stringify(emptyClarify));
+
+  // c) the LAST marker block wins, regardless of kind: a scratch CALC followed by
+  //    a CLARIFY must resolve to CLARIFY (the model reconsidered and decided to ask).
+  var calcThenClarify = 'Hmm.\n|||CALC|||' + JSON.stringify({ game: 'holdem', players: [{ range: 'AA' }, { range: 'KK' }], intent: 'equity' }) +
+    '|||END|||\nWait, I actually need to ask.\n|||CLARIFY|||' + JSON.stringify({ questions: ['Hold\'em or PLO?'], note: 'game unstated' }) + '|||END|||';
+  var ctc = NL.parseLLMResponse(calcThenClarify);
+  ok('last block wins: CALC then CLARIFY -> CLARIFY', ctc.ok === false && ctc.clarify === true, JSON.stringify(ctc));
+
+  // d) and the reverse: a scratch CLARIFY followed by a final CALC resolves to CALC.
+  var clarifyThenCalc = '|||CLARIFY|||' + JSON.stringify({ questions: ['?'], note: 'n' }) + '|||END|||\n' +
+    'Actually I have enough.\n|||CALC|||' + JSON.stringify({ game: 'holdem', players: [{ range: 'AA' }, { range: 'KK' }], intent: 'equity' }) + '|||END|||';
+  var ctc2 = NL.parseLLMResponse(clarifyThenCalc);
+  ok('last block wins: CLARIFY then CALC -> CALC', ctc2.ok === true && ctc2.query && ctc2.query.game === 'holdem', JSON.stringify(ctc2));
+
+  // e) malformed JSON inside a CLARIFY is reported as a clarify-block JSON error (not a query error)
+  var badJson = NL.parseLLMResponse('|||CLARIFY|||{ not valid json |||END|||');
+  ok('malformed CLARIFY json is a clear error', badJson.ok === false && /Clarify block is not valid JSON/.test(badJson.error), JSON.stringify(badJson));
+})();
+
+/* ================================================================== */
+/* MATERIALITY — the prompt teaches ask-vs-compute with worked few-shots */
+/* ================================================================== */
+(function () {
+  var sp = NL.buildSystemPrompt();
+  // The three-output contract is taught.
+  ok('prompt teaches the |||CLARIFY||| output', sp.indexOf('|||CLARIFY|||') >= 0);
+  ok('prompt has a MATERIALITY section', /MATERIALITY/.test(sp));
+  // The core principle: would the equity actually differ?
+  ok('prompt teaches the differ-or-not principle', /Would the equity actually be DIFFERENT/i.test(sp));
+  // ASK exemplars (material + forgotten).
+  ok('prompt: ASK on flush draw suits', /flush draw/i.test(sp) && /which suit/i.test(sp));
+  ok('prompt: ASK on exact overcards', /two overcards/i.test(sp) && /exact/i.test(sp));
+  ok('prompt: ASK on texture-only board with draws/made hands', /TEXTURE only|board given by TEXTURE/i.test(sp));
+  // DO-NOT-ASK exemplars (immaterial by symmetry).
+  ok('prompt: DO NOT ASK on AA$ds vs 20% PLO (symmetry)', /DO NOT ASK/i.test(sp) && /suit-symmetric/i.test(sp));
+  // Bundle-into-one + friendly tone.
+  ok('prompt: bundle all questions into ONE clarify', /BUNDLE|bundle/.test(sp) && /never (drip|ask one)/i.test(sp));
+  ok('prompt: friendly poker-buddy tone for questions', /poker buddy/i.test(sp));
+  // The worked few-shots are present (both an ASK and an immaterial COMPUTE).
+  ok('prompt has a CLARIFY few-shot (Ask:)', /Ask: \|\|\|CLARIFY\|\|\|/.test(sp));
+  ok('prompt has the AA$ds-vs-20% immaterial COMPUTE few-shot', /AA double suited vs the top 20% in PLO/.test(sp));
+  // Approximation honesty for inexpressible draws.
+  ok('prompt notes draws are not exactly expressible (approximate or ask)', /not exactly expressible|NOT exactly expressible/i.test(sp));
 })();
 
 /* ================================================================== */

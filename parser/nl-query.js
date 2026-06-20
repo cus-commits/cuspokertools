@@ -13,8 +13,13 @@
  *   1. Defines and documents the STRUCTURED QUERY SCHEMA the model emits.
  *   2. buildSystemPrompt()  -> the Claude system prompt that teaches the
  *      model the contract + the EXACT supported PPT grammar + few-shots.
- *   3. parseLLMResponse(text) -> pull the structured query JSON out of the
- *      model's reply (handles |||CALC|||...|||END||| or a fenced ```json block).
+ *   3. parseLLMResponse(text) -> pull the model's reply apart. The model emits
+ *      ONE of three outputs per turn:
+ *        (a) |||CALC|||{query}|||END|||     -> { ok:true, query }
+ *        (b) |||CLARIFY|||{questions,note}|||END||| -> { ok:false, clarify:true, questions, note }
+ *        (c) UNSUPPORTED: <reason>          -> { ok:false, unsupported:true, error }
+ *      Anything else -> { ok:false, error }. The LAST marker block wins (CALC or
+ *      CLARIFY), so a model that reconsiders gets its final answer used.
  *   4. validateQuery(query)  -> the GUARDRAIL. Runs every player range through
  *      the REAL parsers (ppt-holdem / ppt-omaha). If a range throws or yields
  *      0 combos, returns a structured error naming the offending range. Also
@@ -29,7 +34,10 @@
  * Public API:
  *   STRUCTURED_QUERY_SCHEMA   (doc object)
  *   buildSystemPrompt(opts?)  -> string
- *   parseLLMResponse(text)    -> { ok, query?, error? }
+ *   parseLLMResponse(text)    -> { ok:true, query }
+ *                              | { ok:false, clarify:true, questions:[...], note }
+ *                              | { ok:false, unsupported:true, error }
+ *                              | { ok:false, error }
  *   validateQuery(query)      -> { ok, errors:[{field,range?,message}], normalized? }
  *
  * Works in Node (module.exports) and the browser (window.NLQuery).
@@ -58,7 +66,13 @@ if (typeof module !== 'undefined' && module.exports) {
  *   board1?:  string,   // doubleboard only
  *   board2?:  string,   // doubleboard only
  *   dead?:    string,   // dead/blocker cards, e.g. "AsKd"  (NOT a range)
- *   intent:  'equity'   // only 'equity' is supported by the engine today
+ *   intent:  'equity',  // only 'equity' is supported by the engine today
+ *   assumptions?: string // plain-English statement of EVERY non-obvious
+ *                        // interpretation the model made: game choice (and why),
+ *                        // any invented/assumed board suits, how each vague range
+ *                        // was read, and any ambiguity/contradiction it resolved.
+ *                        // Surfaced verbatim to the user so they can verify the
+ *                        // reading. Mandatory whenever the input is ambiguous.
  * }
  *
  * - `range` is a PPT Simple Range Syntax string. Percentages stay as
@@ -77,12 +91,17 @@ var STRUCTURED_QUERY_SCHEMA = {
     board1: 'doubleboard only — first board',
     board2: 'doubleboard only — second board',
     dead: 'string of dead/blocker cards e.g. "AsKd" (NOT a range)',
-    intent: "'equity' (only supported intent today)"
+    intent: "'equity' (only supported intent today)",
+    assumptions: 'plain-English statement of every non-obvious interpretation made (game choice + why, assumed board suits, how vague ranges were read, ambiguities resolved). Surfaced verbatim to the user.'
   }
 };
 
-/* Per-game hand length: how many cards a fully-specified hand has. */
-var HAND_LEN = { holdem: 2, omaha: 4, doubleboard: 2 };
+/* Per-game hand length: how many cards a fully-specified hand has.
+ * doubleboard is PLO — the equity engine deals 4-card Omaha holdings to each
+ * player across both boards — so its hands are 4 cards, NOT 2. (Earlier this
+ * was 2, which made the guardrail validate doubleboard ranges with the Hold'em
+ * grammar and wrongly reject valid PLO tokens like AA$ds / AKQJ-T987 / RROO.) */
+var HAND_LEN = { holdem: 2, omaha: 4, doubleboard: 4 };
 
 /* ================================================================== */
 /* 2. buildSystemPrompt()                                             */
@@ -106,6 +125,22 @@ var FEW_SHOTS = [
     a: { game: 'holdem', players: [{ label: 'Hero', range: 'AKs' }, { label: 'Villain', range: 'QQ' }], board: 'Kh3c4c', intent: 'equity' }
   },
   {
+    // The villain range hinges on "a flush draw", which needs a two-tone board —
+    // but the board "6-4-7" was given without suits. Inventing a two-club board to
+    // make the draw possible would MATERIALLY change the equity (whether a flush
+    // draw even exists, and which suits), and the user plausibly just didn't type
+    // the suits. So ASK rather than silently assume. (Read the hand as PLO: "top
+    // set with 8-9" is a 4-card holding = top set of 7s plus the 8 and 9 -> 7789.)
+    q: 'in PLO I have top set with 8-9 on a 6-4-7 board, villain has any 88 with at least a pair or a flush draw, or any 8-5',
+    clarify: {
+      questions: [
+        'What were the exact board suits on the 6-4-7 — was it two of a suit so a flush draw is actually out there, and which suit?',
+        'For villain\'s "88 with a flush draw" piece, do you want me to count any hand with an 8 plus two of the flush suit (I\'ll approximate the draw with the closest supported range and tell you what I included)?'
+      ],
+      note: 'Whether a flush draw even exists (and which suit) changes the equity, and the 6-4-7 board was given without suits — plausibly just left out. PLO read: top set with 8-9 = 7789.'
+    }
+  },
+  {
     q: 'JT98 double suited vs 20% in Omaha',
     a: { game: 'omaha', players: [{ label: 'Hero', range: 'JT98$ds' }, { label: 'Villain', range: '20%' }], intent: 'equity' }
   },
@@ -120,6 +155,11 @@ var FEW_SHOTS = [
   {
     q: 'double board bomb pot: aces vs kings, both PLO double board',
     a: { game: 'doubleboard', players: [{ range: 'AA' }, { range: 'KK' }], intent: 'equity' }
+  },
+  {
+    q: 'on a 2-2-5 rainbow flop I have an overpair of jacks, villain has any trips or better, equity?',
+    a: { game: 'holdem', players: [{ label: 'Hero', range: 'JJ' }, { label: 'Villain', range: '2' }], board: '2c2d5h', intent: 'equity',
+         assumptions: 'Hold\'em (two-card holdings, "overpair" + a single villain board-relative class). "Overpair of jacks" on a 2-2-5 board = JJ. Board stated rainbow with no exact suits; assumed 2c2d5h (three different suits) to honour "rainbow". "Any trips or better" on this paired board: trips needs a 2, so approximated as any hand containing a 2 (range "2"). This is an approximation — it includes 2x trips and full houses/quads but does not separately add the rare straight (3-4 making 2-3-4-5-6) since "or better" was read as trips-and-up of the board pair.' }
   },
   {
     q: 'top 5% vs 5%-15% preflop holdem',
@@ -137,6 +177,46 @@ var FEW_SHOTS = [
     q: 'how often does AA flop a set in holdem?',
     a: null,
     note: 'UNSUPPORTED. The engine computes hand-vs-hand/range equity on a given board, not "frequency of flopping X" probabilities. Set intent to "equity" only when the question maps to an equity matchup; otherwise return an "unsupported" note instead of a query.'
+  },
+  // ---- MATERIALITY few-shots: when missing info CHANGES the equity AND was --
+  // ---- plausibly forgotten, ASK (bundle everything into ONE CLARIFY turn). --
+  {
+    q: 'i got the nut flush draw and two overcards on a queen-high board, he jams any top pair or better, am i ahead',
+    clarify: {
+      questions: [
+        'What were your exact two cards (the nut flush draw means you hold two of a suit, and the two overcards — which ones)?',
+        'What were the three (or more) exact board cards, and was it two-tone — i.e. two of one suit so the flush draw is live, and which suit?'
+      ],
+      note: 'The flush draw and overcards move the equity a lot, and "queen-high" gives the texture but not the exact cards/suits — those were plausibly just left out.'
+    }
+  },
+  {
+    q: 'on a 2-2-5 flop I have an overpair, villain has any set or a wheel draw',
+    clarify: {
+      questions: [
+        'Is this Hold\'em or PLO?',
+        'Which overpair do you have exactly (e.g. AA, KK, ...)? It changes which sets you dominate.',
+        'What were the exact board suits on the 2-2-5 (rainbow, or two of a suit)?'
+      ],
+      note: 'Both the exact overpair and the board suits change the number here, and they were plausibly just not stated.'
+    }
+  },
+  // ---- IMMATERIAL: suits/board don't move the equity (symmetry / no flush) ---
+  // ---- so DON'T pester — compute and briefly note the arbitrary assumption. --
+  {
+    q: 'AA double suited vs the top 20% in PLO',
+    a: { game: 'omaha', players: [{ label: 'Hero', range: 'AA$ds' }, { label: 'Villain', range: '20%' }], intent: 'equity',
+         assumptions: 'PLO ("PLO" + "double suited"). No board, so the exact two suits of the double-suited aces are immaterial (suit-symmetric) — used AA$ds directly without asking.' }
+  },
+  {
+    q: 'JT98 double suited vs aces preflop',
+    a: { game: 'omaha', players: [{ label: 'Hero', range: 'JT98$ds' }, { label: 'Aces', range: 'AA' }], intent: 'equity',
+         assumptions: 'PLO (4-card double-suited rundown). Preflop, no board, so the specific two suits are immaterial by symmetry — JT98$ds vs AA, no question needed.' }
+  },
+  {
+    q: 'JT98 double suited vs 25% in Omaha on a King-high rainbow flop Kh7c2d',
+    a: { game: 'omaha', players: [{ label: 'Hero', range: 'JT98$ds' }, { label: 'Villain', range: '25%' }], board: 'Kh7c2d', intent: 'equity',
+         assumptions: 'Board fully given (Kh7c2d) and rainbow — no flush in play, so the hero\'s two suits relative to the board are immaterial; computed JT98$ds vs 25% on the given board without asking.' }
   }
 ];
 
@@ -145,7 +225,9 @@ function fewShotBlock() {
   for (var i = 0; i < FEW_SHOTS.length; i++) {
     var ex = FEW_SHOTS[i];
     lines.push('English: ' + ex.q);
-    if (ex.a === null) {
+    if (ex.clarify) {
+      lines.push('Ask: |||CLARIFY|||' + JSON.stringify(ex.clarify) + '|||END|||');
+    } else if (ex.a === null) {
       lines.push('UNSUPPORTED: ' + (ex.note || 'cannot be expressed as an equity matchup.'));
     } else {
       lines.push('Query: |||CALC|||' + JSON.stringify(ex.a) + '|||END|||');
@@ -160,11 +242,15 @@ function buildSystemPrompt(opts) {
   return [
 'You translate plain-English poker equity questions into a STRUCTURED QUERY for the cusPokerTools engine.',
 '',
-'OUTPUT CONTRACT',
-'Output ONLY the marker block below and NOTHING ELSE. No preamble, no explanation,',
-'no "Great question", no reasoning, no text before or after. Your ENTIRE reply must',
-'be exactly the block. (Explaining instead of emitting the block is the #1 failure.)',
-'Emit exactly one structured query wrapped in markers, on its own line:',
+'OUTPUT CONTRACT — emit EXACTLY ONE of these three, and NOTHING ELSE (no preamble,',
+'no "Great question", no reasoning, no text before or after the block):',
+'  (a) |||CALC|||{ ...query json... }|||END|||      -> you have everything; ready to compute.',
+'  (b) |||CLARIFY|||{"questions":["..."],"note":"..."}|||END|||  -> you are missing MATERIAL info',
+'      the user likely just forgot (see MATERIALITY below). Bundle EVERY question you need',
+'      into this ONE block; never drip questions one at a time.',
+'  (c) UNSUPPORTED: <reason>                          -> cannot be an equity matchup at all.',
+'(Explaining in prose instead of emitting one of these is the #1 failure.)',
+'For (a) the JSON is the structured query wrapped in markers, on its own line:',
 '  |||CALC|||{ ...json... }|||END|||',
 'The JSON MUST match this schema:',
 '  { "game": "holdem"|"omaha"|"doubleboard",',
@@ -173,8 +259,57 @@ function buildSystemPrompt(opts) {
 '    "board1"?: <cards>,    // doubleboard only',
 '    "board2"?: <cards>,    // doubleboard only',
 '    "dead"?:   <cards>,    // dead/blocker cards, e.g. "AsKd" (NEVER put blockers in a range)',
-'    "intent":  "equity" }  // only "equity" is supported',
+'    "intent":  "equity",   // only "equity" is supported',
+'    "assumptions"?: <string> }  // SEE BELOW — mandatory when the input is ambiguous',
 'Cards are concatenated 2-char tokens (rank + suit), no separators: "Ah", "Tc", "3c". A board has 3-5 cards.',
+'',
+'MATERIALITY — WHEN TO ASK (|||CLARIFY|||) vs WHEN TO JUST COMPUTE (|||CALC|||)',
+'This is the most important judgment you make. Before asking ANY question, ask yourself:',
+'  "Would the equity actually be DIFFERENT if I assumed this vs the truth?"',
+'  - If NO (the answer is unchanged — suit symmetry, no flush in play, an irrelevant',
+'    detail): DO NOT ASK. Pick a legal representative silently and note it briefly in',
+'    "assumptions", then emit |||CALC|||. Pestering about immaterial detail is a failure.',
+'  - If YES (it moves the number) AND the user plausibly just forgot to say it: ASK.',
+'    Emit |||CLARIFY||| with EVERY missing material item bundled into ONE friendly turn.',
+'ASK (material + plausibly forgotten) — examples:',
+'  - "there was a flush draw on the board" -> which suit? was the board two-of-a-suit?',
+'    do YOU hold that suit (do you actually have the draw)? (flush draws swing equity).',
+'  - "I had two overcards" -> which exact cards? (the specific overcards change outs).',
+'  - a board given by TEXTURE only ("queen-high", "2-2-5") when made hands or DRAWS are',
+'    referenced -> what were the EXACT board cards and suits?',
+'  - "double suited" WHEN a flush / board-suit interaction is in play -> which two suits,',
+'    and do they match the board?',
+'  - a referenced made-hand class that hinges on an unstated card ("an overpair" -> which',
+'    one?) when that choice changes which hands dominate.',
+'DO NOT ASK (immaterial — equity unchanged) — just compute, note the arbitrary pick:',
+'  - "AA double suited vs the top 20% in PLO" -> no board; the exact two suits are',
+'    suit-symmetric, equity is identical -> compute AA$ds vs 20%. No question.',
+'  - "AA vs KK heads up" -> suits immaterial -> compute.',
+'  - "JT98 double suited vs aces preflop" -> no board, symmetric -> compute.',
+'  - any spot with NO flush / flush-draw in play and a rainbow or unspecified-but-',
+'    immaterial board -> assign arbitrary legal suits silently (note it), do not pester.',
+'TONE of CLARIFY questions: friendly and brief, like a poker buddy. e.g.',
+'  "Quick Qs so I nail this: (1) was the flop two of a suit — a flush draw out there —',
+'   and which suit? (2) what were your two overcards exactly?"',
+'BUNDLE everything into the single CLARIFY; never ask one thing, then another next turn.',
+'Note: Hold\'em straight draws (gutshot/OESD) and PLO board-suit flush draws are not exactly expressible',
+'by the grammar. For those, either ASK for the specifics that let you approximate,',
+'or compute the closest supported range and DISCLOSE the approximation in "assumptions" — never',
+'emit nonsense, and never silently guess a detail that moves the number.',
+'',
+'ASSUMPTIONS FIELD — MANDATORY WHENEVER THE INPUT IS AMBIGUOUS, GAME-AMBIGUOUS, OR BOARD-RELATIVE',
+'The user only sees the syntax you emit; they CANNOT see your reasoning. So you MUST record every',
+'non-obvious interpretation in a short plain-English "assumptions" string. State EACH of:',
+'  - GAME CHOICE and WHY ("4 named hole cards + a set plus extra cards = PLO, not Hold\'em").',
+'  - Any board suits you INVENTED because the user gave ranks but no suits and a suit-dependent',
+'    concept (flush draw / two-tone) needed them ("user gave board 6-4-7 with no suits; assumed two',
+'    clubs so a flush draw is possible: 6c4c7h").',
+'  - How you read each VAGUE or board-relative range ("top set" -> set of the highest board rank;',
+'    "any top pair or better" -> pair of the top board card or a stronger made hand, approximated as ...).',
+'  - Any AMBIGUITY or CONTRADICTION you resolved, and any concept you could only APPROXIMATE',
+'    ("the engine has no exact \'wrap\' token, approximated the straight draws as open-enders + gutters").',
+'It is FAR better to over-explain here than to silently guess. If the input is fully unambiguous',
+'(e.g. "AA vs KK"), you may omit assumptions or keep it to one short line. When in doubt, include it.',
 '',
 'PERCENTAGES — CRITICAL',
 'Keep "top X%" / range bands as literal tokens: "20%", "10%-30%". The engine resolves them itself',
@@ -212,6 +347,50 @@ function buildSystemPrompt(opts) {
 '    - suit variables (4 rank+suit-letter pairs): AxAyKxKy (AA-KK double-suited), AxAyKxKz (AA single-suited w/ KK)',
 '    - explicit 4 cards: AsAhKsKd',
 '',
+'GAME DETECTION — decide Hold\'em vs Omaha/PLO from cues, then STATE the choice in assumptions:',
+'  OMAHA / PLO cues (4-card hands):',
+'    - the word "PLO", "Omaha", "double board", "bomb pot", "rundown", "double suited" / "single suited"',
+'    - any player described by FOUR named cards/ranks ("KQJT", "aces and kings", "9876")',
+'    - "top set WITH X-Y" / "a set PLUS two more cards" / "trips and a wrap" — a made hand PLUS extra',
+'      cards is a 4-card holding => Omaha. e.g. "top set with 8-9" on a 6-4-7 board = a 4-card hand',
+'      that holds two 7s (top set) AND an 8 and a 9 => "7789" (PLO).',
+'    - "all combos" / "any two pair or better" / "wrap" / "rundown" alongside 4 ranks',
+'  HOLD\'EM cues (2-card hands):',
+'    - exactly TWO cards named ("AK", "8-9", "pocket jacks"), "suited connector", "AKs", "AKo"',
+'    - "preflop", "3-bet", "hand vs hand" with 2-card holdings and no 4-card language',
+'  If BOTH games are plausible, pick the one that lets you keep ALL of the user\'s words (dropping',
+'  "the 8-9" to force Hold\'em is WRONG — that loss of information signals you picked the wrong game).',
+'  Whatever you pick, say so in assumptions and explain the cue that decided it.',
+'',
+'BOARD-RELATIVE CONCEPTS — expand against the CONCRETE board; if the board is missing the suits a',
+'concept needs, INVENT a representative board and SAY SO LOUDLY in assumptions (never silently):',
+'  - "top set" = a set (three) of the HIGHEST board rank. Hold\'em: that pocket pair (e.g. board 6-4-7',
+'    -> "77"). Omaha: a 4-card hand containing two of that rank plus the stated extras (e.g. "7789").',
+'  - "top pair" = a hole card matching the highest board rank. "overpair" = a pocket pair higher than',
+'    every board card (Hold\'em e.g. board 2-2-5 -> "JJ" is an overpair of jacks).',
+'  - "flush draw" / "nut flush draw" = needs a TWO-TONE board (two of one suit) AND the drawing hand',
+'    to hold two of that suit. This is MATERIAL: whether the draw exists at all, and which suit,',
+'    changes the equity. So if the user referenced a flush draw but gave the board WITHOUT suits',
+'    (e.g. "6-4-7", "queen-high"), DO NOT silently invent a two-tone board — emit |||CLARIFY||| and',
+'    ASK which suit / whether it was two-tone / whether the hero holds that suit. Only invent + STATE',
+'    a representative two-tone board when the flush detail is genuinely immaterial to the number asked.',
+'  - "trips" = a hole card pairing a PAIRED board (board 2-2-5 -> any hand with a 2 -> Hold\'em "2",',
+'    Omaha a 4-card hand containing a 2). "pairs the board" similar.',
+'  - "two pair or better" / "top pair or better" / "any trips or better" / "any straight draw" are',
+'    THRESHOLD ranges. The engine has no literal "or better" or "any draw" token. APPROXIMATE with the',
+'    closest supported syntax (unions of the relevant made hands / draw shapes, or a wide "%" band if',
+'    that is honestly the best you can do) and SAY in assumptions that it is an approximation and what',
+'    you included/omitted. If you truly cannot approximate a clause, drop the IMPOSSIBLE part, keep the',
+'    rest, and flag the omission in assumptions. Never emit a token you are unsure the grammar supports.',
+'  - "wheel draw" = drawing to A-2-3-4-5; on a low board approximate with the wheel cards present',
+'    ("A","2","3","4","5" holdings as supported) and note the approximation.',
+'  Where a board-relative range cannot be made exact, it is BETTER to ship a clearly-labelled',
+'  approximation than a silent guess. The assumptions string is where you are honest about the gap.',
+'',
+'CONTRADICTIONS / IMPOSSIBLE INPUT: if a clause is self-contradictory or cannot exist (e.g. a "flush',
+'draw" demanded on a rainbow board you were forced to assume), make the most reasonable assumption,',
+'flag it in assumptions, and still emit a valid query. Never crash, never emit unsupported tokens.',
+'',
 'DO NOT EMIT / UNSUPPORTED (the engine cannot compute these):',
 '    - "frequency of flopping a set / making a straight / hitting a draw" style PROBABILITY questions',
 '      (the engine does equity matchups on a given board, not made-hand frequencies).',
@@ -226,7 +405,11 @@ function buildSystemPrompt(opts) {
 '',
 'FEW-SHOT EXAMPLES',
 fewShotBlock(),
-'Now translate the user\'s question. Emit one |||CALC|||...|||END||| block (or an "UNSUPPORTED:" note). No other prose.'
+'Now translate the user\'s question. Emit EXACTLY ONE of: a |||CALC|||...|||END||| block, a',
+'|||CLARIFY|||...|||END||| block (only when MATERIAL info was plausibly forgotten — see MATERIALITY),',
+'or an "UNSUPPORTED:" note. When you DO compute and the input was ambiguous, game-ambiguous, or uses',
+'board-relative concepts, you MUST include the "assumptions" string explaining every non-obvious',
+'reading (including any immaterial detail you assigned arbitrarily). No prose outside the block.'
   ].join('\n');
 }
 
@@ -242,24 +425,35 @@ function parseLLMResponse(text) {
   // Detect an explicit unsupported note.
   var unsup = text.match(/UNSUPPORTED:\s*(.+)/i);
 
-  var jsonStr = null;
+  // The model emits ONE of three outputs per turn:
+  //   (a) |||CALC|||{...}|||END|||      — ready to compute
+  //   (b) |||CLARIFY|||{...}|||END|||   — needs info the user likely forgot
+  //   (c) UNSUPPORTED: <reason>         — not an equity matchup
+  // CALC and CLARIFY share the |||...|||END||| envelope. A model may reconsider
+  // and emit several blocks; the LAST marker block (of EITHER kind) is the answer.
+  // We scan for both kinds in one pass so the true last block wins regardless of
+  // type — a CLARIFY that follows a scratch CALC must not be overridden, and vice
+  // versa.
+  var markerRe = /\|\|\|(CALC|CLARIFY)\|\|\|([\s\S]*?)\|\|\|END\|\|\|/g;
+  var lastKind = null, lastBody = null, mm;
+  while ((mm = markerRe.exec(text)) !== null) {
+    lastKind = mm[1].toUpperCase();
+    lastBody = mm[2];
+  }
 
-  // a) |||CALC|||{...}|||END||| — take the LAST block: a model that reconsiders
-  //    ("Wait, let me redo that...") emits several; its final block is the answer.
-  var calcRe = /\|\|\|CALC\|\|\|([\s\S]*?)\|\|\|END\|\|\|/g;
-  var calcAll = [], cm;
-  while ((cm = calcRe.exec(text)) !== null) calcAll.push(cm[1]);
-  if (calcAll.length) {
-    jsonStr = calcAll[calcAll.length - 1].trim();
+  var jsonStr = null;
+  if (lastBody !== null) {
+    jsonStr = lastBody.trim();
   } else {
-    // b) fenced ```json ... ``` or ``` ... ``` — also take the last fenced block.
+    // No marker block. Fall back to fenced / bare JSON (legacy CALC shapes only;
+    // CLARIFY is always wrapped in markers per the contract).
     var fenceRe = /```(?:json)?\s*([\s\S]*?)```/gi;
     var fenceAll = [], fm;
     while ((fm = fenceRe.exec(text)) !== null) fenceAll.push(fm[1]);
     if (fenceAll.length) {
       jsonStr = fenceAll[fenceAll.length - 1].trim();
     } else {
-      // c) a bare {...} object somewhere in the text (first balanced-ish object)
+      // a bare {...} object somewhere in the text (first balanced-ish object)
       var brace = text.match(/\{[\s\S]*\}/);
       if (brace) jsonStr = brace[0].trim();
     }
@@ -270,13 +464,32 @@ function parseLLMResponse(text) {
     return { ok: false, error: 'No structured query found in LLM response' };
   }
 
-  var query;
+  var obj;
   try {
-    query = JSON.parse(jsonStr);
+    obj = JSON.parse(jsonStr);
   } catch (e) {
-    return { ok: false, error: 'Structured query is not valid JSON: ' + e.message };
+    var label = lastKind === 'CLARIFY' ? 'Clarify block' : 'Structured query';
+    return { ok: false, error: label + ' is not valid JSON: ' + e.message };
   }
-  return { ok: true, query: query };
+
+  // (b) CLARIFY: the model needs material info it judges the user likely forgot.
+  if (lastKind === 'CLARIFY') {
+    var questions = (obj && Array.isArray(obj.questions)) ? obj.questions.filter(function (q) {
+      return typeof q === 'string' && q.trim() !== '';
+    }) : [];
+    if (questions.length === 0) {
+      return { ok: false, error: 'Clarify block had no questions' };
+    }
+    return {
+      ok: false,
+      clarify: true,
+      questions: questions,
+      note: (obj && typeof obj.note === 'string') ? obj.note : ''
+    };
+  }
+
+  // (a) CALC.
+  return { ok: true, query: obj };
 }
 
 /* ================================================================== */
@@ -357,6 +570,11 @@ function validateQuery(query) {
     errors.push({ field: 'intent', message: 'Unsupported intent ' + JSON.stringify(query.intent) + ' (only "equity" is supported)' });
   }
 
+  // --- assumptions (optional, but must be a string if present) ---
+  if (query.assumptions !== undefined && typeof query.assumptions !== 'string') {
+    errors.push({ field: 'assumptions', message: 'assumptions must be a plain-English string if present' });
+  }
+
   // --- players ---
   if (!Array.isArray(query.players) || query.players.length < 2) {
     errors.push({ field: 'players', message: 'players must be an array of at least 2 entries' });
@@ -432,8 +650,10 @@ function validateQuery(query) {
         continue;
       }
       var lbl = player.label || ('#' + (p + 1));
-      // doubleboard ranges parse with the holdem grammar (2-card hands).
-      var parseGame = (game === 'omaha') ? 'omaha' : 'holdem';
+      // doubleboard is PLO: the engine deals 4-card Omaha holdings across both
+      // boards, so its ranges MUST validate with the Omaha (4-card) grammar,
+      // exactly like 'omaha'. Only plain 'holdem' uses the 2-card grammar.
+      var parseGame = (game === 'holdem') ? 'holdem' : 'omaha';
       validateRange(player.range, parseGame, rangeBlockers, errors, lbl);
     }
   }
@@ -500,6 +720,27 @@ function formatResultBlock(query, result) {
     lines.push('');
     lines.push('BOARD');
     lines.push('  ' + pad('texture', 16) + ' ' + suitTex + (paired ? ', paired' : ', unpaired'));
+  }
+
+  // --- INTERPRETATION / ASSUMPTIONS (always after the math) -----------------
+  // The user must ALWAYS be able to see how their words were read: which game
+  // was chosen and why, any board suits that were invented, how each vague /
+  // board-relative range was approximated, and any ambiguity that was resolved.
+  // This is the model's plain-English `assumptions` string, shown verbatim and
+  // word-wrapped. If the model gave none, say so explicitly (never hide it).
+  var assumptions = (query && query.assumptions) || (result && result.assumptions) || '';
+  lines.push('');
+  lines.push('INTERPRETATION / ASSUMPTIONS');
+  if (assumptions && String(assumptions).trim()) {
+    var words = String(assumptions).trim().split(/\s+/);
+    var line = '  ', WRAP = 78;
+    for (var wi = 0; wi < words.length; wi++) {
+      if (line.length > 2 && (line.length + 1 + words[wi].length) > WRAP) { lines.push(line); line = '  '; }
+      line += (line.length > 2 ? ' ' : '') + words[wi];
+    }
+    if (line.trim()) lines.push(line);
+  } else {
+    lines.push('  (none stated — the input was read literally / unambiguously)');
   }
   return lines.join('\n');
 }

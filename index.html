@@ -147,6 +147,7 @@ table.results-table .equity-cell{font-weight:700;color:var(--green);}
 .ai-msg-ai code{background:#0a0a0a;padding:1px 5px;border-radius:2px;font-family:var(--mono);font-size:12px;color:var(--amber);}
 .ai-msg-ai h1,.ai-msg-ai h2,.ai-msg-ai h3,.ai-msg-ai h4{margin:7px 0 4px;color:var(--amber);} .ai-msg-ai h3{font-size:13px;} .ai-msg-ai h4{font-size:12px;}
 .ai-msg-ai ul,.ai-msg-ai ol{margin:4px 0 4px 18px;} .ai-msg-ai li{margin-bottom:2px;}
+.ai-clarify p{margin:0 0 4px;} .ai-clarify ul{margin:0 0 0 18px;}
 .ai-msg-ai hr{border:none;border-top:1px solid var(--line);margin:7px 0;}
 .ai-input-bar{display:flex;gap:8px;padding:9px 14px;background:var(--panel);border:1px solid var(--line);border-radius:0 0 3px 3px;}
 .ai-input-bar textarea{flex:1;padding:7px 10px;border:1px solid var(--line);border-radius:2px;font-size:13px;font-family:var(--mono);resize:none;min-height:40px;max-height:120px;line-height:1.4;background:#0a0a0a;color:var(--txt);caret-color:var(--amber);}
@@ -3810,7 +3811,7 @@ async function anthropicComplete(messages, system) {
       'anthropic-dangerous-direct-browser-access': 'true'
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-5-20250929',
+      model: 'claude-opus-4-8',
       max_tokens: 1024,
       system: system,
       messages: messages
@@ -3827,9 +3828,21 @@ async function anthropicComplete(messages, system) {
   return data.content.map(b => b.text).join('');
 }
 
-// Translate the user's English to a structured query via NLQuery, with up to
-// 2 self-repair retries on a parse/validate failure (the structured error is
-// sent back to the model).
+// How many CLARIFY rounds the current conversation has already asked. Persists
+// ACROSS turns (the user answers in a later aiSend), so it's reset only when a
+// CALC succeeds or the flow ends. After this many rounds we tell the model to
+// stop asking and compute best-effort, to avoid an infinite clarify loop.
+let aiClarifyRounds = 0;
+const AI_MAX_CLARIFY_ROUNDS = 4;
+
+// Translate the user's English to a structured query via NLQuery. Handles the
+// THREE-way NLQuery response:
+//   - { ok:true, query }            -> validate (with up to 2 self-repair retries)
+//   - clarify:true, questions, note -> the model needs info the user forgot
+//   - unsupported:true, error       -> not an equity matchup
+// The model's assistant turns are pushed onto the shared aiConversation so a
+// later answer turn sees the original question AND the clarification, then
+// returns CALC. After AI_MAX_CLARIFY_ROUNDS we force a best-effort compute.
 async function translateToQuery() {
   const sysPrompt = window.NLQuery.buildSystemPrompt();
   const msgs = aiConversation.slice();
@@ -3842,6 +3855,18 @@ async function translateToQuery() {
     const parsed = window.NLQuery.parseLLMResponse(text);
     if (!parsed.ok) {
       if (parsed.unsupported) return { ok: false, unsupported: true, error: parsed.error, text };
+      if (parsed.clarify) {
+        // Model wants info the user likely forgot. If we've already hit the
+        // round cap, force a best-effort CALC instead of asking again.
+        if (aiClarifyRounds >= AI_MAX_CLARIFY_ROUNDS) {
+          const force = 'Do NOT ask any more questions. Make reasonable assumptions for anything still missing, ' +
+            'note them briefly, and output ONLY the structured query in the |||CALC|||{...}|||END||| format now.';
+          aiConversation.push({ role: 'user', content: force });
+          msgs.push({ role: 'user', content: force });
+          continue;
+        }
+        return { ok: false, clarify: true, questions: parsed.questions, note: parsed.note, text };
+      }
       lastError = parsed.error;
     } else {
       const v = window.NLQuery.validateQuery(parsed.query);
@@ -3856,22 +3881,44 @@ async function translateToQuery() {
   return { ok: false, error: lastError || 'Could not produce a valid query.' };
 }
 
+// Render the model's clarifying questions as a friendly AI chat bubble.
+function renderClarifyQuestions(questions, note) {
+  const intro = (note && note.trim())
+    ? escapeHtml(note.trim())
+    : 'A couple quick things so I can run this:';
+  const items = questions.map(q => '<li>' + escapeHtml(q) + '</li>').join('');
+  appendAIMessage('<div class="ai-clarify"><p>' + intro + '</p><ul>' + items + '</ul></div>');
+}
+
 async function callClaude() {
   aiSending = true;
   document.getElementById('ai-send-btn').disabled = true;
   showTypingIndicator();
 
   try {
-    // 1. Translate English -> structured query (with self-repair).
+    // 1. Translate English -> structured query (with self-repair / clarify loop).
     const tr = await translateToQuery();
     removeTypingIndicator();
     if (!tr.ok) {
-      if (tr.unsupported) appendSystemMessage(tr.error);
-      else appendSystemMessage('Could not build a valid query: ' + tr.error);
+      if (tr.clarify) {
+        // The model needs info the user likely forgot. Show the questions as a
+        // normal AI chat bubble and STOP — do NOT compute. The assistant turn is
+        // already on aiConversation; the user answers in the SAME chat box, and
+        // the next aiSend() re-calls the model with the answers in history,
+        // which should then return CALC. Loop until CALC (round-capped above).
+        aiClarifyRounds++;
+        renderClarifyQuestions(tr.questions, tr.note);
+      } else if (tr.unsupported) {
+        appendSystemMessage(tr.error);
+      } else {
+        appendSystemMessage('Could not build a valid query: ' + tr.error);
+      }
       aiSending = false;
       document.getElementById('ai-send-btn').disabled = false;
       return;
     }
+    // Ready to compute — a full question is in hand; reset the clarify counter.
+    aiClarifyRounds = 0;
     const query = tr.query;
     if (query.game === 'doubleboard') {
       appendSystemMessage('Double-board equity is not supported by the new engine yet. Use the Simulate tab.');
