@@ -7,330 +7,175 @@
 <link rel="icon" type="image/png" href="gorn.png">
 <link rel="apple-touch-icon" href="gorn.png">
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #333; background: #f5f5f5; }
+/* ===== V6 — BLOOMBERG / FINANCE TERMINAL (amber on charcoal, dense data) ===== */
+:root{
+  --bg:#0a0a0a; --panel:#14171c; --panel2:#111317; --line:#262b33;
+  --txt:#c8ccd2; --muted:#6b7078; --amber:#ff9500; --amber2:#ffb000;
+  --green:#00d68f; --red:#ff453a; --mono:'JetBrains Mono',Consolas,'Courier New',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',system-ui,Arial,sans-serif;font-size:13px;color:var(--txt);
+  background:var(--bg);}
 
-/* Header */
-.header { background: #4a7c59; color: white; padding: 10px 20px; }
-.header h1 { font-size: 22px; font-weight: bold; letter-spacing: 1px; }
-.header .subtitle { font-size: 11px; opacity: 0.85; margin-top: 2px; }
+.header{background:#0d0f13;color:#fff;padding:8px 16px;border-bottom:1px solid var(--amber);}
+.header h1{font-size:18px;font-weight:700;letter-spacing:1.5px;color:var(--amber);text-transform:uppercase;}
+.header .subtitle{font-size:10px;color:var(--muted);margin-top:2px;letter-spacing:1px;text-transform:uppercase;}
 
-/* Navigation */
-.nav { background: #3d6b4a; display: flex; padding: 0 20px; }
-.nav a {
-  color: white; text-decoration: none; padding: 8px 18px; font-size: 13px;
-  cursor: pointer; border-bottom: 3px solid transparent;
-}
-.nav a:hover { background: rgba(255,255,255,0.1); }
-.nav a.active { background: rgba(255,255,255,0.15); border-bottom: 3px solid #a8d5ba; font-weight: bold; }
+.nav{background:var(--panel2);display:flex;padding:0 16px;border-bottom:1px solid var(--line);}
+.nav a{color:var(--muted);text-decoration:none;padding:7px 16px;font-size:12px;cursor:pointer;border-bottom:2px solid transparent;transition:.1s;text-transform:uppercase;letter-spacing:.5px;}
+.nav a:hover{color:var(--txt);}
+.nav a.active{color:var(--amber);border-bottom:2px solid var(--amber);font-weight:700;}
 
-/* Main layout */
-.main { display: flex; max-width: 1200px; margin: 0 auto; padding: 15px; gap: 15px; }
-.left-panel { flex: 0 0 420px; background: white; border: 1px solid #ccc; padding: 15px; }
-.right-panel { flex: 1; background: #e8f5e9; border: 1px solid #b8d4bc; padding: 15px; min-height: 400px; }
+.main{display:flex;max-width:1280px;margin:0 auto;padding:12px;gap:12px;}
+.left-panel{flex:0 0 420px;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:12px;}
+.right-panel{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:12px;min-height:400px;}
 
-/* Form controls */
-label { display: block; font-weight: bold; margin: 10px 0 4px; font-size: 12px; color: #555; }
-label:first-child { margin-top: 0; }
-select, input[type="text"] {
-  width: 100%; padding: 6px 8px; border: 1px solid #aaa; font-size: 13px;
-  font-family: 'Courier New', monospace; background: white;
-}
-select { font-family: Arial, sans-serif; cursor: pointer; }
-.hand-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
-.hand-row input[type="text"] { flex: 1; min-width: 120px; }
-.hand-row .hand-label { font-size: 12px; color: #555; min-width: 60px; font-weight: bold; }
-.hand-row .remove-btn {
-  background: none; border: none; color: #c00; cursor: pointer; font-size: 16px; padding: 0 4px;
-}
-.hand-row .mode-toggle {
-  font-size: 11px; padding: 3px 8px; border: 1px solid #999; border-radius: 3px;
-  background: #f0f0f0; cursor: pointer; color: #555; white-space: nowrap;
-}
-.hand-row .mode-toggle:hover { background: #e0e0e0; }
-.hand-row .mode-toggle.range-active { background: #4a7c59; color: white; border-color: #4a7c59; }
-.range-controls { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 220px; }
-.range-slider-wrap { flex: 1; position: relative; height: 28px; }
-.range-slider-track { position: absolute; top: 12px; left: 0; right: 0; height: 4px; background: #ccc; border-radius: 2px; }
-.range-slider-fill { position: absolute; top: 12px; height: 4px; background: #4a7c59; border-radius: 2px; }
-.range-slider-wrap input[type="range"] {
-  position: absolute; top: 0; left: 0; width: 100%; height: 28px;
-  -webkit-appearance: none; appearance: none; background: transparent;
-  pointer-events: none; margin: 0; cursor: pointer;
-}
-.range-slider-wrap input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
-  background: #4a7c59; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-  pointer-events: all; cursor: grab; position: relative; z-index: 2;
-}
-.range-slider-wrap input[type="range"]::-moz-range-thumb {
-  width: 16px; height: 16px; border-radius: 50%;
-  background: #4a7c59; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-  pointer-events: all; cursor: grab;
-}
-.range-controls .range-label { font-size: 11px; font-weight: bold; color: #4a7c59; min-width: 80px; text-align: center; line-height: 1.2; }
+label{display:block;font-weight:700;margin:9px 0 4px;font-size:10px;color:var(--amber);text-transform:uppercase;letter-spacing:.7px;}
+label:first-child{margin-top:0;}
+select,input[type="text"]{width:100%;padding:6px 8px;border:1px solid var(--line);font-size:13px;font-family:var(--mono);background:#0a0a0a;color:var(--txt);border-radius:2px;caret-color:var(--amber);}
+select{font-family:inherit;cursor:pointer;}
+input[type="text"]:focus,select:focus,textarea:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 2px rgba(255,149,0,.18);}
+input::placeholder{color:#454b54;}
 
-/* Syntax filter dropdown — flat list, no submenus */
-.filter-btn { font-size: 11px; padding: 3px 6px; border: 1px solid #999; border-radius: 3px; background: #f0f0f0; cursor: pointer; color: #555; white-space: nowrap; position: relative; }
-.filter-btn:hover { background: #e0e0e0; }
-.filter-menu { display: none; position: absolute; top: 100%; left: 0; background: white; border: 1px solid #aaa; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 500; min-width: 220px; max-height: 400px; overflow-y: auto; font-size: 12px; }
-.filter-menu.open { display: block; }
-.filter-item { padding: 7px 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
-.filter-item:hover { background: #e8f5e9; }
-.filter-item:active { background: #c8e6c9; }
-.filter-item .syntax { color: #888; font-family: monospace; font-size: 11px; margin-left: 12px; }
-.filter-sep { border-top: 1px solid #ddd; margin: 2px 0; }
-.filter-header { padding: 5px 12px; font-size: 10px; font-weight: 700; color: #4a7c59; text-transform: uppercase; letter-spacing: 0.5px; background: #f5f5f5; }
+.hand-row{display:flex;align-items:center;gap:5px;margin-bottom:6px;flex-wrap:wrap;}
+.hand-row input[type="text"]{flex:1;min-width:120px;}
+.hand-row .hand-label{font-size:11px;color:var(--amber);min-width:60px;font-weight:700;font-family:var(--mono);}
+.hand-row .remove-btn{background:none;border:none;color:var(--red);cursor:pointer;font-size:17px;padding:0 4px;}
+.hand-row .mode-toggle{font-size:10px;padding:3px 8px;border:1px solid var(--line);border-radius:2px;background:var(--panel2);cursor:pointer;color:var(--muted);white-space:nowrap;text-transform:uppercase;}
+.hand-row .mode-toggle:hover{border-color:var(--amber);color:var(--txt);}
+.hand-row .mode-toggle.range-active{background:var(--amber);color:#0a0a0a;border-color:var(--amber);font-weight:700;}
+.range-controls{display:flex;align-items:center;gap:8px;flex:1;min-width:220px;}
+.range-slider-wrap{flex:1;position:relative;height:26px;}
+.range-slider-track{position:absolute;top:11px;left:0;right:0;height:4px;background:var(--line);border-radius:2px;}
+.range-slider-fill{position:absolute;top:11px;height:4px;background:var(--amber);border-radius:2px;}
+.range-slider-wrap input[type="range"]{position:absolute;top:0;left:0;width:100%;height:26px;-webkit-appearance:none;appearance:none;background:transparent;pointer-events:none;margin:0;cursor:pointer;}
+.range-slider-wrap input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:2px;background:var(--amber);border:1px solid #0a0a0a;pointer-events:all;cursor:grab;position:relative;z-index:2;}
+.range-slider-wrap input[type="range"]::-moz-range-thumb{width:14px;height:14px;border-radius:2px;background:var(--amber);border:1px solid #0a0a0a;pointer-events:all;cursor:grab;}
+.range-controls .range-label{font-size:10px;font-weight:700;color:var(--amber);min-width:80px;text-align:center;line-height:1.2;font-family:var(--mono);}
 
-/* Game type tabs */
-.game-tabs { display: flex; gap: 0; margin-bottom: 12px; border: 1px solid #4a7c59; border-radius: 6px; overflow: hidden; }
-.game-tab { flex: 1; padding: 8px 4px; font-size: 13px; font-weight: 600; border: none; background: #f0f0f0; color: #555; cursor: pointer; text-align: center; transition: all 0.15s; }
-.game-tab:not(:last-child) { border-right: 1px solid #4a7c59; }
-.game-tab:hover { background: #e0efe3; }
-.game-tab.active { background: #4a7c59; color: white; }
-.more-hands { color: #2a6e3f; cursor: pointer; font-size: 12px; text-decoration: underline; margin: 6px 0; display: inline-block; }
-.more-hands:hover { color: #1a5e2f; }
-.hand-preview { font-size: 12px; min-height: 16px; padding: 2px 0; margin: -4px 0 2px 66px; }
-.filter-tag { font-size: 10px; color: #4a7c59; font-style: italic; margin: -2px 0 2px 66px; }
+.filter-btn{font-size:10px;padding:3px 7px;border:1px solid var(--line);border-radius:2px;background:var(--panel2);cursor:pointer;color:var(--muted);white-space:nowrap;position:relative;text-transform:uppercase;}
+.filter-btn:hover{border-color:var(--amber);color:var(--txt);}
+.filter-menu{display:none;position:absolute;top:100%;left:0;background:var(--panel);border:1px solid var(--line);border-radius:3px;box-shadow:0 12px 30px rgba(0,0,0,.7);z-index:500;min-width:220px;max-height:400px;overflow-y:auto;font-size:12px;}
+.filter-menu.open{display:block;}
+.filter-item{padding:6px 11px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;color:var(--txt);}
+.filter-item:hover{background:rgba(255,149,0,.1);}
+.filter-item:active{background:rgba(255,149,0,.2);}
+.filter-item .syntax{color:var(--muted);font-family:var(--mono);font-size:11px;margin-left:12px;}
+.filter-sep{border-top:1px solid var(--line);margin:2px 0;}
+.filter-header{padding:5px 11px;font-size:9px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.6px;background:var(--panel2);}
 
-/* Buttons */
-.btn-row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
-.btn {
-  padding: 8px 20px; font-size: 13px; cursor: pointer; border: 1px solid #888;
-  background: #f0f0f0; color: #333; font-weight: bold;
-}
-.btn:hover { background: #e0e0e0; }
-.btn-primary { background: #4a7c59; color: white; border-color: #3d6b4a; }
-.btn-primary:hover { background: #3d6b4a; }
-.btn-secondary { background: #eee; }
-.btn-row-2 { margin-top: 8px; }
+.game-tabs{display:flex;gap:0;margin-bottom:10px;border:1px solid var(--line);border-radius:3px;overflow:hidden;}
+.game-tab{flex:1;padding:7px 4px;font-size:12px;font-weight:700;border:none;background:var(--panel2);color:var(--muted);cursor:pointer;text-align:center;transition:.1s;text-transform:uppercase;}
+.game-tab:not(:last-child){border-right:1px solid var(--line);}
+.game-tab:hover{background:#1a1e24;color:var(--txt);}
+.game-tab.active{background:var(--amber);color:#0a0a0a;}
+.more-hands{color:var(--amber);cursor:pointer;font-size:11px;text-decoration:none;margin:6px 0;display:inline-block;border-bottom:1px dashed var(--amber);}
+.more-hands:hover{color:var(--amber2);border-color:var(--amber2);}
+.hand-preview{font-size:11px;min-height:15px;padding:2px 0;margin:-3px 0 2px 66px;color:var(--muted);font-family:var(--mono);}
+.filter-tag{font-size:10px;color:var(--amber);font-style:italic;margin:-2px 0 2px 66px;}
 
-/* Results */
-.results-title { font-size: 16px; font-weight: bold; color: #2a5e3a; margin-bottom: 10px; }
-.results-info { font-size: 12px; color: #555; margin-bottom: 8px; }
-.results-board { font-family: 'Courier New', monospace; font-size: 13px; margin-bottom: 10px; color: #333; }
-table.results-table {
-  width: 100%; border-collapse: collapse; font-size: 13px; background: white;
-}
-table.results-table th {
-  background: #5a8c69; color: white; padding: 8px 10px; text-align: left;
-  font-size: 12px; border: 1px solid #4a7c59;
-}
-table.results-table td {
-  padding: 6px 10px; border: 1px solid #ccc;
-}
-table.results-table tr:nth-child(even) { background: #f0f8f2; }
-table.results-table .equity-cell { font-weight: bold; }
+.btn-row{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap;}
+.btn{padding:7px 16px;font-size:12px;cursor:pointer;border:1px solid var(--line);background:var(--panel2);color:var(--txt);font-weight:700;border-radius:2px;transition:.1s;text-transform:uppercase;letter-spacing:.5px;}
+.btn:hover{border-color:var(--amber);color:var(--amber);}
+.btn-primary{background:var(--amber);color:#0a0a0a;border:1px solid var(--amber);}
+.btn-primary:hover{background:var(--amber2);color:#0a0a0a;border-color:var(--amber2);}
+.btn-secondary{background:var(--panel2);}
+.btn-row-2{margin-top:6px;}
 
-.error-msg { color: #c00; font-weight: bold; font-size: 13px; margin: 10px 0; }
-.loading { color: #2a6e3f; font-weight: bold; font-size: 14px; }
-.placeholder-text { color: #888; font-size: 13px; font-style: italic; margin-top: 30px; }
+.results-title{font-size:14px;font-weight:700;color:var(--amber);margin-bottom:8px;letter-spacing:.5px;text-transform:uppercase;}
+.results-info{font-size:11px;color:var(--muted);margin-bottom:6px;font-family:var(--mono);}
+.results-board{font-family:var(--mono);font-size:14px;margin-bottom:8px;color:var(--txt);}
+table.results-table{width:100%;border-collapse:collapse;font-size:13px;background:var(--panel2);border:1px solid var(--line);}
+table.results-table th{background:var(--amber);color:#0a0a0a;padding:5px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.6px;border:1px solid var(--line);font-weight:700;}
+table.results-table td{padding:4px 8px;border:1px solid var(--line);color:var(--txt);font-family:var(--mono);}
+table.results-table tr:nth-child(even){background:#0d0f13;}
+table.results-table .equity-cell{font-weight:700;color:var(--green);}
 
-/* 4-Color Deck suit colors */
-.suit-s { color: #000; }
-.suit-h { color: #e00; }
-.suit-d { color: #00c; }
-.suit-c { color: #080; }
+.error-msg{color:var(--red);font-weight:700;font-size:12px;margin:8px 0;font-family:var(--mono);}
+.loading{color:var(--amber);font-weight:700;font-size:13px;}
+.placeholder-text{color:var(--muted);font-size:12px;font-style:italic;margin-top:24px;}
 
-/* Card Picker Button */
-.card-picker-btn {
-  background: none; border: 1px solid #aaa; border-radius: 3px; cursor: pointer;
-  font-size: 16px; padding: 2px 6px; line-height: 1; color: #555;
-}
-.card-picker-btn:hover { background: #e8f5e9; border-color: #4a7c59; }
+.suit-s{color:#e0e0e0;} .suit-h{color:#ff453a;} .suit-d{color:#0a84ff;} .suit-c{color:#30d158;}
 
-/* Card Picker Overlay */
-.card-picker-overlay {
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.4); z-index: 2000;
-  display: flex; justify-content: center; align-items: center;
-}
-.card-picker-popup {
-  background: white; border-radius: 8px; padding: 15px; box-shadow: 0 8px 30px rgba(0,0,0,0.3);
-  max-width: 95vw; max-height: 90vh; overflow: auto;
-}
-.card-picker-popup h4 { margin: 0 0 10px; color: #4a7c59; font-size: 14px; }
-.card-picker-grid {
-  display: grid; grid-template-columns: repeat(13, 1fr); gap: 3px;
-}
-.card-picker-cell {
-  width: 34px; height: 42px; border: 1px solid #ccc; border-radius: 3px;
-  background: #fff; cursor: pointer; font-size: 12px; font-weight: bold;
-  display: flex; align-items: center; justify-content: center;
-  font-family: 'Courier New', monospace; user-select: none; padding: 0;
-}
-.card-picker-cell:hover:not(.cp-disabled) { background: #f0f8f2; border-color: #4a7c59; }
-.card-picker-cell.cp-selected { background: #c8e6c9; border: 2px solid #4a7c59; }
-.card-picker-cell.cp-disabled { opacity: 0.3; cursor: not-allowed; background: #eee; }
-.card-picker-cell { touch-action: manipulation; user-select: none; -webkit-user-select: none; }
-.card-picker-cell:active:not(.cp-disabled) { transform: scale(0.92); }
-.card-picker-cell.cp-suit-s { color: #000; }
-.card-picker-cell.cp-suit-h { color: #e00; }
-.card-picker-cell.cp-suit-d { color: #00c; }
-.card-picker-cell.cp-suit-c { color: #080; }
-.card-picker-actions {
-  display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end;
-}
-.card-picker-actions button {
-  padding: 6px 16px; font-size: 13px; cursor: pointer; border-radius: 4px; font-weight: bold;
-}
-.cp-done-btn { background: #4a7c59; color: white; border: none; }
-.cp-done-btn:hover { background: #3d6b4a; }
-.cp-clear-btn { background: #eee; color: #333; border: 1px solid #aaa; }
-.cp-clear-btn:hover { background: #ddd; }
-.card-picker-row-label {
-  display: flex; align-items: center; font-size: 18px; font-weight: bold;
-  justify-content: center; padding-right: 4px;
-}
-@media (max-width: 520px) {
-  .card-picker-cell { width: 26px; height: 34px; font-size: 10px; }
-  .card-picker-grid { gap: 2px; }
-}
+.card-picker-btn{background:var(--panel2);border:1px solid var(--line);border-radius:2px;cursor:pointer;font-size:15px;padding:2px 6px;line-height:1;color:var(--muted);}
+.card-picker-btn:hover{border-color:var(--amber);color:var(--amber);}
+.card-picker-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:2000;display:flex;justify-content:center;align-items:center;}
+.card-picker-popup{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:14px;box-shadow:0 16px 50px rgba(0,0,0,.8);max-width:95vw;max-height:90vh;overflow:auto;}
+.card-picker-popup h4{margin:0 0 9px;color:var(--amber);font-size:13px;text-transform:uppercase;letter-spacing:.6px;}
+.card-picker-grid{display:grid;grid-template-columns:repeat(13,1fr);gap:3px;}
+.card-picker-cell{width:34px;height:42px;border:1px solid var(--line);border-radius:2px;background:var(--panel2);cursor:pointer;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:var(--mono);user-select:none;padding:0;color:var(--txt);touch-action:manipulation;-webkit-user-select:none;}
+.card-picker-cell:hover:not(.cp-disabled){background:#1a1e24;border-color:var(--amber);}
+.card-picker-cell.cp-selected{background:rgba(255,149,0,.18);border:2px solid var(--amber);}
+.card-picker-cell.cp-disabled{opacity:.3;cursor:not-allowed;background:#0a0a0a;}
+.card-picker-cell:active:not(.cp-disabled){transform:scale(.92);}
+.card-picker-cell.cp-suit-s{color:#e0e0e0;} .card-picker-cell.cp-suit-h{color:#ff453a;} .card-picker-cell.cp-suit-d{color:#0a84ff;} .card-picker-cell.cp-suit-c{color:#30d158;}
+.card-picker-actions{display:flex;gap:8px;margin-top:10px;justify-content:flex-end;}
+.card-picker-actions button{padding:6px 14px;font-size:12px;cursor:pointer;border-radius:2px;font-weight:700;text-transform:uppercase;}
+.cp-done-btn{background:var(--amber);color:#0a0a0a;border:none;}
+.cp-done-btn:hover{background:var(--amber2);}
+.cp-clear-btn{background:var(--panel2);color:var(--txt);border:1px solid var(--line);}
+.cp-clear-btn:hover{border-color:var(--red);}
+.card-picker-row-label{display:flex;align-items:center;font-size:17px;font-weight:700;justify-content:center;padding-right:4px;color:var(--txt);font-family:var(--mono);}
+@media (max-width:520px){.card-picker-cell{width:26px;height:34px;font-size:10px;}.card-picker-grid{gap:2px;}}
 
-/* Pages */
-.page { display: none; }
-.page.active { display: block; }
-.about-content, .home-content { max-width: 700px; margin: 20px auto; background: white; padding: 25px; border: 1px solid #ccc; }
-.about-content h2, .home-content h2 { color: #4a7c59; margin-bottom: 10px; }
-.about-content p, .home-content p { margin-bottom: 10px; line-height: 1.5; }
-.home-content ul { margin: 10px 0 10px 25px; }
-.home-content li { margin-bottom: 5px; }
+.page{display:none;} .page.active{display:block;}
+.about-content,.home-content{max-width:700px;margin:16px auto;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:20px;}
+.about-content h2,.home-content h2{color:var(--amber);margin-bottom:9px;text-transform:uppercase;letter-spacing:.6px;}
+.about-content p,.home-content p{margin-bottom:9px;line-height:1.5;}
+.home-content ul{margin:9px 0 9px 22px;} .home-content li{margin-bottom:4px;}
 
-/* ==================== AI Assistant Styles ==================== */
-.ai-container {
-  max-width: 900px; margin: 0 auto; padding: 15px;
-  display: flex; flex-direction: column; height: calc(100vh - 100px);
-}
-.ai-top-bar {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 10px 15px; background: #4a7c59; color: white; border-radius: 8px 8px 0 0;
-}
-.ai-top-bar h3 { font-size: 15px; font-weight: bold; }
-.ai-settings-btn {
-  background: none; border: 1px solid rgba(255,255,255,0.4); color: white;
-  padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 18px;
-}
-.ai-settings-btn:hover { background: rgba(255,255,255,0.15); }
-.ai-chat-area {
-  flex: 1; overflow-y: auto; background: white; border-left: 1px solid #ccc;
-  border-right: 1px solid #ccc; padding: 15px; display: flex; flex-direction: column; gap: 12px;
-}
-.ai-msg {
-  max-width: 80%; padding: 10px 14px; border-radius: 12px; font-size: 13px;
-  line-height: 1.55; word-wrap: break-word; white-space: pre-wrap;
-}
-.ai-msg-user {
-  align-self: flex-end; background: #4a7c59; color: white; border-bottom-right-radius: 3px;
-}
-.ai-msg-ai {
-  align-self: flex-start; background: #f0f0f0; color: #222; border-bottom-left-radius: 3px;
-}
-.ai-msg-system {
-  align-self: center; background: #fff8e1; color: #795548; font-size: 12px;
-  padding: 6px 12px; border-radius: 6px; border: 1px solid #ffe0b2;
-}
-.ai-result-block {
-  margin: 0; font-family: 'Courier New', monospace; font-size: 12.5px;
-  line-height: 1.45; white-space: pre; overflow-x: auto; color: #1b1b1b;
-  background: transparent;
-}
-.ai-msg-ai table { margin: 8px 0; border-collapse: collapse; width: 100%; font-size: 12px; }
-.ai-msg-ai table th { background: #5a8c69; color: white; padding: 5px 8px; text-align: left; border: 1px solid #4a7c59; }
-.ai-msg-ai table td { padding: 4px 8px; border: 1px solid #ccc; }
-.ai-msg-ai table tr:nth-child(even) { background: #f0f8f2; }
-.ai-msg-ai strong { font-weight: bold; }
-.ai-msg-ai em { font-style: italic; }
-.ai-msg-ai code { background: #e8e8e8; padding: 1px 4px; border-radius: 3px; font-family: 'Courier New', monospace; font-size: 12px; }
-.ai-msg-ai h1, .ai-msg-ai h2, .ai-msg-ai h3, .ai-msg-ai h4 { margin: 8px 0 4px; }
-.ai-msg-ai h3 { font-size: 14px; }
-.ai-msg-ai h4 { font-size: 13px; }
-.ai-msg-ai ul, .ai-msg-ai ol { margin: 4px 0 4px 18px; }
-.ai-msg-ai li { margin-bottom: 2px; }
-.ai-msg-ai hr { border: none; border-top: 1px solid #ccc; margin: 8px 0; }
-.ai-input-bar {
-  display: flex; gap: 8px; padding: 10px 15px;
-  background: #e8f5e9; border: 1px solid #b8d4bc; border-radius: 0 0 8px 8px;
-}
-.ai-input-bar textarea {
-  flex: 1; padding: 8px 10px; border: 1px solid #aaa; border-radius: 6px;
-  font-size: 13px; font-family: Arial, sans-serif; resize: none; min-height: 40px;
-  max-height: 120px; line-height: 1.4;
-}
-.ai-input-bar textarea:focus { outline: none; border-color: #4a7c59; }
-.ai-send-btn {
-  padding: 8px 20px; background: #4a7c59; color: white; border: none;
-  border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold;
-  align-self: flex-end;
-}
-.ai-send-btn:hover { background: #3d6b4a; }
-.ai-send-btn:disabled { background: #999; cursor: not-allowed; }
+.ai-container{max-width:900px;margin:0 auto;padding:12px;display:flex;flex-direction:column;height:calc(100vh - 100px);}
+.ai-top-bar{display:flex;justify-content:space-between;align-items:center;padding:9px 14px;background:#0d0f13;color:#fff;border:1px solid var(--line);border-bottom:1px solid var(--amber);border-radius:3px 3px 0 0;}
+.ai-top-bar h3{font-size:13px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.6px;}
+.ai-settings-btn{background:none;border:1px solid var(--line);color:var(--muted);padding:4px 10px;border-radius:2px;cursor:pointer;font-size:16px;}
+.ai-settings-btn:hover{border-color:var(--amber);color:var(--amber);}
+.ai-chat-area{flex:1;overflow-y:auto;background:var(--panel2);border-left:1px solid var(--line);border-right:1px solid var(--line);padding:14px;display:flex;flex-direction:column;gap:10px;}
+.ai-msg{max-width:80%;padding:9px 13px;border-radius:3px;font-size:13px;line-height:1.5;word-wrap:break-word;white-space:pre-wrap;}
+.ai-msg-user{align-self:flex-end;background:rgba(255,149,0,.12);color:var(--txt);border:1px solid rgba(255,149,0,.4);border-bottom-right-radius:0;font-weight:600;}
+.ai-msg-ai{align-self:flex-start;background:var(--panel);color:var(--txt);border:1px solid var(--line);border-bottom-left-radius:0;}
+.ai-msg-system{align-self:center;background:rgba(255,149,0,.08);color:var(--amber);font-size:11px;padding:6px 12px;border-radius:2px;border:1px solid rgba(255,149,0,.25);}
+.ai-result-block{margin:0;font-family:var(--mono);font-size:12.5px;line-height:1.45;white-space:pre;overflow-x:auto;color:var(--green);background:transparent;}
+.ai-msg-ai table{margin:7px 0;border-collapse:collapse;width:100%;font-size:12px;}
+.ai-msg-ai table th{background:var(--amber);color:#0a0a0a;padding:5px 8px;text-align:left;border:1px solid var(--line);font-weight:700;}
+.ai-msg-ai table td{padding:4px 8px;border:1px solid var(--line);font-family:var(--mono);}
+.ai-msg-ai table tr:nth-child(even){background:#0d0f13;}
+.ai-msg-ai strong{font-weight:700;color:#fff;} .ai-msg-ai em{font-style:italic;}
+.ai-msg-ai code{background:#0a0a0a;padding:1px 5px;border-radius:2px;font-family:var(--mono);font-size:12px;color:var(--amber);}
+.ai-msg-ai h1,.ai-msg-ai h2,.ai-msg-ai h3,.ai-msg-ai h4{margin:7px 0 4px;color:var(--amber);} .ai-msg-ai h3{font-size:13px;} .ai-msg-ai h4{font-size:12px;}
+.ai-msg-ai ul,.ai-msg-ai ol{margin:4px 0 4px 18px;} .ai-msg-ai li{margin-bottom:2px;}
+.ai-msg-ai hr{border:none;border-top:1px solid var(--line);margin:7px 0;}
+.ai-input-bar{display:flex;gap:8px;padding:9px 14px;background:var(--panel);border:1px solid var(--line);border-radius:0 0 3px 3px;}
+.ai-input-bar textarea{flex:1;padding:7px 10px;border:1px solid var(--line);border-radius:2px;font-size:13px;font-family:var(--mono);resize:none;min-height:40px;max-height:120px;line-height:1.4;background:#0a0a0a;color:var(--txt);caret-color:var(--amber);}
+.ai-send-btn{padding:7px 18px;background:var(--amber);color:#0a0a0a;border:none;border-radius:2px;cursor:pointer;font-size:12px;font-weight:700;align-self:flex-end;text-transform:uppercase;letter-spacing:.5px;}
+.ai-send-btn:hover{background:var(--amber2);} .ai-send-btn:disabled{background:#2a2e34;color:#566;cursor:not-allowed;}
 
-/* History section */
-.ai-history-section {
-  margin-top: 10px; background: white; border: 1px solid #ccc; border-radius: 8px; overflow: hidden;
-}
-.ai-history-header {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 8px 15px; background: #f5f5f5; border-bottom: 1px solid #ccc; cursor: pointer;
-  font-size: 13px; font-weight: bold; color: #555;
-}
-.ai-history-header:hover { background: #eee; }
-.ai-history-body { max-height: 250px; overflow-y: auto; }
-.ai-history-item {
-  padding: 8px 15px; border-bottom: 1px solid #eee; cursor: pointer; font-size: 12px;
-}
-.ai-history-item:hover { background: #f0f8f2; }
-.ai-history-item .hist-time { color: #888; font-size: 11px; }
-.ai-history-item .hist-query { color: #333; margin-top: 2px; }
-.ai-history-detail {
-  display: none; padding: 8px 15px 12px; background: #fafafa; font-size: 12px;
-  border-bottom: 1px solid #ddd; line-height: 1.5;
-}
-.ai-history-detail pre {
-  background: #e8e8e8; padding: 6px; border-radius: 4px; white-space: pre-wrap;
-  font-size: 11px; margin: 4px 0;
-}
+.ai-history-section{margin-top:9px;background:var(--panel);border:1px solid var(--line);border-radius:3px;overflow:hidden;}
+.ai-history-header{display:flex;justify-content:space-between;align-items:center;padding:8px 14px;background:var(--panel2);border-bottom:1px solid var(--line);cursor:pointer;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+.ai-history-header:hover{color:var(--txt);}
+.ai-history-body{max-height:250px;overflow-y:auto;}
+.ai-history-item{padding:7px 14px;border-bottom:1px solid var(--line);cursor:pointer;font-size:12px;}
+.ai-history-item:hover{background:rgba(255,149,0,.06);}
+.ai-history-item .hist-time{color:var(--muted);font-size:11px;font-family:var(--mono);}
+.ai-history-item .hist-query{color:var(--txt);margin-top:2px;}
+.ai-history-detail{display:none;padding:7px 14px 10px;background:var(--panel2);font-size:12px;border-bottom:1px solid var(--line);line-height:1.5;}
+.ai-history-detail pre{background:#0a0a0a;padding:6px;border-radius:2px;white-space:pre-wrap;font-size:11px;margin:4px 0;color:var(--green);font-family:var(--mono);}
 
-/* Settings Modal */
-.modal-overlay {
-  display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;
-}
-.modal-overlay.active { display: flex; }
-.modal-box {
-  background: white; border-radius: 10px; padding: 25px; width: 420px;
-  max-width: 90vw; box-shadow: 0 8px 30px rgba(0,0,0,0.3);
-}
-.modal-box h3 { margin-bottom: 15px; color: #4a7c59; }
-.modal-box label { display: block; font-weight: bold; margin-bottom: 4px; font-size: 12px; color: #555; }
-.modal-box input[type="password"], .modal-box input[type="text"] {
-  width: 100%; padding: 8px 10px; border: 1px solid #aaa; border-radius: 4px;
-  font-size: 13px; font-family: 'Courier New', monospace; margin-bottom: 15px;
-}
-.modal-box .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
-.modal-box .modal-btns button {
-  padding: 8px 18px; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: bold;
-}
-.modal-save { background: #4a7c59; color: white; border: none; }
-.modal-save:hover { background: #3d6b4a; }
-.modal-cancel { background: #eee; color: #333; border: 1px solid #aaa; }
-.modal-cancel:hover { background: #ddd; }
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;justify-content:center;align-items:center;}
+.modal-overlay.active{display:flex;}
+.modal-box{background:var(--panel);border:1px solid var(--line);border-top:2px solid var(--amber);border-radius:3px;padding:22px;width:420px;max-width:90vw;box-shadow:0 16px 50px rgba(0,0,0,.8);}
+.modal-box h3{margin-bottom:13px;color:var(--amber);text-transform:uppercase;letter-spacing:.6px;}
+.modal-box label{display:block;font-weight:700;margin-bottom:5px;font-size:11px;color:var(--amber);}
+.modal-box input[type="password"],.modal-box input[type="text"]{width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:2px;font-size:13px;font-family:var(--mono);margin-bottom:13px;background:#0a0a0a;color:var(--txt);caret-color:var(--amber);}
+.modal-box .modal-btns{display:flex;gap:8px;justify-content:flex-end;}
+.modal-box .modal-btns button{padding:7px 16px;border-radius:2px;font-size:12px;cursor:pointer;font-weight:700;text-transform:uppercase;}
+.modal-save{background:var(--amber);color:#0a0a0a;border:none;} .modal-save:hover{background:var(--amber2);}
+.modal-cancel{background:var(--panel2);color:var(--txt);border:1px solid var(--line);} .modal-cancel:hover{border-color:var(--red);}
 
-/* Typing indicator */
-.typing-indicator {
-  align-self: flex-start; padding: 10px 14px; background: #f0f0f0;
-  border-radius: 12px; border-bottom-left-radius: 3px;
-}
-.typing-indicator span {
-  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-  background: #999; margin-right: 4px; animation: typingBounce 1.2s infinite;
-}
-.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
-.typing-indicator span:nth-child(3) { animation-delay: 0.4s; margin-right: 0; }
-@keyframes typingBounce {
-  0%, 60%, 100% { transform: translateY(0); }
-  30% { transform: translateY(-5px); }
-}
+.typing-indicator{align-self:flex-start;padding:9px 13px;background:var(--panel);border:1px solid var(--line);border-radius:3px;border-bottom-left-radius:0;}
+.typing-indicator span{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--amber);margin-right:4px;animation:typingBounce 1.2s infinite;}
+.typing-indicator span:nth-child(2){animation-delay:.2s;}
+.typing-indicator span:nth-child(3){animation-delay:.4s;margin-right:0;}
+@keyframes typingBounce{0%,60%,100%{transform:translateY(0);}30%{transform:translateY(-5px);}}
 </style>
 </head>
 <body>
@@ -473,6 +318,7 @@ table.results-table .equity-cell { font-weight: bold; }
 <script src="parser/ppt-holdem.js"></script>
 <script src="parser/ppt-omaha.js"></script>
 <script src="parser/ppt-percent.js"></script>
+<script src="parser/ppt-equity.js"></script>
 <script src="parser/nl-query.js"></script>
 
 <script>
@@ -1303,6 +1149,152 @@ function runSimulation() {
     // Check for slider range slots AND PPT range text slots
     const sliderRangeSlots = handSlots.filter(s => s.mode === 'range');
     const totalRangeSlots = sliderRangeSlots.length + pptRangeSlots.length;
+
+    // ════════════════════════════════════════════════════════════════════════
+    // N-WAY ENGINE PATH (PPTEquity) — the validated multi-way equity fix.
+    // If ANY slot is a range / percentage / slider, route the WHOLE board of
+    // players (in slot order, every player included) through PPTEquity so each
+    // player gets an equity, no combo caps, no dropped ranges. The old branches
+    // below (which kept only rangeInfos[0], capped at 80 combos, and used the
+    // ~61%-vs-random PLO enumerator) are bypassed for any range scenario.
+    // ════════════════════════════════════════════════════════════════════════
+    const hasRange = totalRangeSlots > 0;
+    if (hasRange && window.PPTEquity && window.PPTEquity.computeMultiwayEquity) {
+      // doubleboard: the engine supports it; route through if so.
+      const engineGame = gameType; // 'holdem' | 'omaha' | 'doubleboard'
+
+      // Convert a slider slot {lo,hi,pct,direction} -> a PPTPercent token.
+      // percentRange selects the [lo,hi] percentile band (0 = strongest), so:
+      //   top pct%    -> "pct%"            (band [0, pct])
+      //   bottom pct% -> "(100-pct)%-100%" (band [100-pct, 100])
+      function sliderToToken(slot) {
+        if (slot.direction === 'bottom') return (100 - slot.pct) + '%-100%';
+        return slot.pct + '%';
+      }
+
+      // Build the slot-ordered player list. Walk handSlots in document order so
+      // hero (first concrete) and villains stay in the order the user entered.
+      const enginePlayers = [];
+      const rowLabels = []; // human-readable label per player row (HTML)
+      for (const slot of handSlots) {
+        if (slot.mode === 'range') {
+          const tok = sliderToToken(slot);
+          enginePlayers.push({ label: 'P' + (enginePlayers.length + 1), spec: tok });
+          rowLabels.push('Range ' + tok);
+        } else { // 'specific'
+          const v = (slot.value || '').trim();
+          if (!v) continue; // empty slot -> not a player
+          const itype = detectInputType(v);
+          if (itype === 'specific') {
+            const idx = parseCards(v);
+            const expLen = engineGame === 'holdem' ? 2 : 4;
+            if (idx.length !== expLen) {
+              throw new Error('Hand ' + slot.id + ': expected ' + expLen + ' cards, got ' + idx.length);
+            }
+            const spec = cardIndicesToStrings(idx).join('');
+            enginePlayers.push({ label: 'P' + (enginePlayers.length + 1), spec: spec });
+            rowLabels.push(cardsToHTML(idx));
+          } else {
+            // PPT range / percentage typed into a text input -> pass through.
+            enginePlayers.push({ label: 'P' + (enginePlayers.length + 1), spec: v });
+            rowLabels.push('Range ' + v);
+          }
+        }
+      }
+
+      if (enginePlayers.length < 2) throw new Error('Need at least 2 players to simulate');
+
+      const boardStr = cardIndicesToStrings(boardCards).join('');
+      const board1Str = cardIndicesToStrings(board1Cards).join('');
+      const board2Str = cardIndicesToStrings(board2Cards).join('');
+      const deadStr = cardIndicesToStrings(deadCards).join('');
+      const gameNamesNW = { holdem: "Hold'em", omaha: 'Omaha (PLO4)', doubleboard: 'Double Board PLO' };
+
+      // Lazy-load the percentage rankings the engine needs (it can't fetch them).
+      const needsPercent = enginePlayers.some(p => /\d\s*%/.test(p.spec));
+      const preload = (engineGame === 'holdem')
+        ? ensureHoldemRanking()
+        : (needsPercent ? ensureOmahaRanking() : Promise.resolve());
+
+      resultsArea.innerHTML = '<p class="loading">⏳ Computing N-way equity…</p>';
+
+      preload.then(() => {
+        // Run on a macrotask so the loading paint lands first (engine loop is
+        // synchronous). Progress is reflected in the spinner text.
+        setTimeout(() => {
+          try {
+            const opts = {
+              game: engineGame,
+              players: enginePlayers,
+              dead: deadStr,
+              trials: 120000,
+              onProgress: function (frac) {
+                const pct = Math.round(frac * 100);
+                const bar = '█'.repeat(Math.round(pct / 5)) + '░'.repeat(20 - Math.round(pct / 5));
+                resultsArea.innerHTML = '<p class="loading">⏳ N-way equity [' + bar + '] ' + pct + '%</p>';
+              }
+            };
+            if (engineGame === 'doubleboard') { opts.board1 = board1Str; opts.board2 = board2Str; }
+            else { opts.board = boardStr; }
+
+            const res = window.PPTEquity.computeMultiwayEquity(opts);
+
+            // EXACT SYNTAX header (APP_RULES.md rule 1) — the precise query computed.
+            const syntaxQuery = {
+              game: engineGame,
+              board: engineGame === 'doubleboard' ? board1Str : boardStr,
+              board2: engineGame === 'doubleboard' ? board2Str : '',
+              dead: deadStr,
+              players: enginePlayers.map(p => ({ range: p.spec }))
+            };
+            const syntaxResult = {
+              board: syntaxQuery.board, board2: syntaxQuery.board2, dead: deadStr, game: engineGame,
+              players: res.players.map((ep, i) => ({
+                range: enginePlayers[i].spec, equity: ep.equity,
+                combos: ep.combos, exact: ep.kind === 'fixed', trials: res.trials
+              }))
+            };
+
+            let html = '<h3>' + (gameNamesNW[engineGame] || engineGame) + ' — N-way Equity</h3>';
+            if (engineGame === 'doubleboard') {
+              if (board1Cards.length > 0) html += '<p><strong>Board 1:</strong> ' + cardsToHTML(board1Cards) + '</p>';
+              if (board2Cards.length > 0) html += '<p><strong>Board 2:</strong> ' + cardsToHTML(board2Cards) + '</p>';
+            } else if (boardCards.length > 0) {
+              html += '<p><strong>Board:</strong> ' + cardsToHTML(boardCards) + '</p>';
+            }
+            if (deadCards.length > 0) html += '<p><strong>Dead:</strong> ' + cardsToHTML(deadCards) + '</p>';
+
+            // ONE ROW PER PLAYER: hand/range + equity (+ combos for ranges).
+            html += '<table class="results-table"><thead><tr><th>Player</th><th>Hand / Range</th><th>Equity</th><th>Combos</th></tr></thead><tbody>';
+            let eqSum = 0;
+            res.players.forEach((ep, i) => {
+              eqSum += ep.equity || 0;
+              const isRange = ep.kind === 'range';
+              const comboTxt = isRange ? Number(ep.combos).toLocaleString() : '1';
+              html += '<tr><td>P' + (i + 1) + (i === 0 ? ' (hero)' : '') + '</td>'
+                + '<td>' + rowLabels[i] + '</td>'
+                + '<td class="equity-cell"><strong>' + (ep.equity).toFixed(2) + '%</strong></td>'
+                + '<td>' + comboTxt + '</td></tr>';
+            });
+            html += '</tbody></table>';
+            html += '<p style="font-size:11px;color:#888;margin-top:6px;">Equities sum to ' + eqSum.toFixed(1) + '% over ' + res.trials.toLocaleString() + ' trials.</p>';
+
+            // EXACT SYNTAX block (deterministic; what was computed, to the dot).
+            try {
+              const block = window.NLQuery.formatResultBlock(syntaxQuery, syntaxResult);
+              html += '<pre class="ai-result-block" style="margin-top:10px;">' + block.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</pre>';
+            } catch (e) {}
+
+            resultsArea.innerHTML = html;
+          } catch (e) {
+            resultsArea.innerHTML = '<p class="error-msg">Error: ' + e.message + '</p>';
+          }
+        }, 0);
+      }).catch(e => {
+        resultsArea.innerHTML = '<p class="error-msg">Error: ' + e.message + '</p>';
+      });
+      return; // N-way engine handled this scenario.
+    }
 
     // ── PPT RANGE MODE (text input with range syntax) ──
     if (pptRangeSlots.length > 0) {
@@ -3552,175 +3544,58 @@ async function computeEquity(query, opts) {
   if (game !== 'holdem' && game !== 'omaha') {
     throw new Error('Engine supports holdem and omaha (got ' + JSON.stringify(game) + ')');
   }
+  if (!window.PPTEquity || !window.PPTEquity.computeMultiwayEquity) {
+    throw new Error('PPTEquity engine not loaded');
+  }
   const onStatus = opts.onStatus || function () {};
   const onProgress = opts.onProgress || function () {};
   const TRIALS = opts.trials || 150000;
 
-  const boardStrs = pptSplitCards(query.board || '');
-  const deadStrs = pptSplitCards(query.dead || '');
-  const boardIdx = boardStrs.map(pptCardToIdx);
-  const deadIdx = deadStrs.map(pptCardToIdx);
-  const evalFn = game === 'omaha' ? window.PPTEval.evalOmaha : window.PPTEval.eval7holdem;
-  const holeSize = game === 'omaha' ? 4 : 2;
-
   const players = query.players || [];
   if (players.length < 2) throw new Error('Need at least 2 players (hero + 1 villain)');
 
-  // Hero must be a single concrete hand (the modules sample only villains).
-  const heroRangeStr = players[0].range;
-  let heroIdx;
-  {
-    const heroStrs = pptSplitCards(heroRangeStr);
-    if (heroStrs.length !== holeSize || !/^([2-9TJQKA][cdhs]){1,}$/i.test(heroStrs.join(''))) {
-      // hero given as a non-concrete range -> sample it too (treat like a villain set #0)
-      heroIdx = null;
-    } else {
-      heroIdx = heroStrs.map(pptCardToIdx);
-    }
-  }
-
-  // Build a sampler for each player range:
-  //   { kind:'concrete', hand:[idx...] }  (hero only)
-  //   { kind:'set', list:[[idx...]], combos, exact }
-  // Blockers for villain range enumeration = dead + board + hero's concrete
-  // cards (a villain cannot hold a card the hero/board/dead already holds, so
-  // the reported combo count reflects what is genuinely available).
-  const heroBlockerStrs = (heroIdx === null) ? [] : pptSplitCards(heroRangeStr);
-  const deadBlockerStrs = deadStrs.concat(boardStrs).concat(heroBlockerStrs); // for omaha enumerate / holdem parseRange dead
-
-  function buildSet(rangeStr) {
-    if (isPercentToken(rangeStr)) {
-      const band = parsePercentBand(rangeStr);
-      const pr = window.PPTPercent.percentRange(game, band.lo, band.hi);
-      const flat = pr._ensureFlat(); // array of idx hands
-      return { kind: 'set', list: flat, combos: pr.totalCombos, exact: false };
-    }
-    if (game === 'holdem') {
-      const r = window.PPTHoldem.parseRange(rangeStr, { dead: deadBlockerStrs });
-      const list = r.combos.map(pair => pair.map(pptCardToIdx));
-      return { kind: 'set', list, combos: r.count, exact: true };
-    } else {
-      const om = window.PPTOmaha.parseRange(rangeStr);
-      const en = om.enumerate({ max: 300000, dead: deadBlockerStrs });
-      const list = en.combos.map(q => q.map(pptCardToIdx));
-      // exact when the whole matching set was returned (not random-sampled).
-      return { kind: 'set', list, combos: en.total, exact: !en.sampled };
-    }
-  }
-
-  // Lazy-load omaha ranking if any player is a percentage token in omaha.
-  if (game === 'omaha') {
-    const needsOmahaRank = players.some(p => isPercentToken(p.range)) || (heroIdx === null && isPercentToken(heroRangeStr));
+  // Preload the percentage rankings the engine needs BEFORE it runs. The engine
+  // resolves '%' tokens through PPTPercent, which needs rankings preset in the
+  // browser (it cannot fetch them itself).
+  if (game === 'holdem') {
+    await ensureHoldemRanking();
+  } else {
+    const needsOmahaRank = players.some(p => isPercentToken(p.range));
     if (needsOmahaRank) await ensureOmahaRanking(onStatus);
   }
-  if (game === 'holdem') await ensureHoldemRanking();
 
-  // playerSets[0] is hero's set if hero is non-concrete; else hero is fixed.
-  const villainSets = [];
-  const heroSet = (heroIdx === null) ? buildSet(heroRangeStr) : null;
-  for (let i = 1; i < players.length; i++) villainSets.push(buildSet(players[i].range));
+  // EVERY player (hero + each villain) is passed in SLOT ORDER as a spec string.
+  // The N-way engine returns an equity for ALL of them — this is the fix for the
+  // old code, which only tracked hero and left 3+-way villains undefined.
+  const enginePlayers = players.map((p, i) => ({
+    label: 'P' + (i + 1),
+    spec: p.range
+  }));
 
-  // Sanity: every set must have at least one legal hand.
-  if (heroSet && heroSet.list.length === 0) throw new Error('Hero range "' + heroRangeStr + '" has no legal combos');
-  villainSets.forEach((s, i) => { if (s.list.length === 0) throw new Error('Range "' + players[i + 1].range + '" has no legal combos'); });
-
-  const rng = Math.random;
-  function sampleFrom(set, blocked) {
-    for (let a = 0; a < 300; a++) {
-      const cand = set.list[Math.min(set.list.length - 1, Math.floor(rng() * set.list.length))];
-      let clash = false;
-      for (let k = 0; k < cand.length; k++) { if (blocked.has(cand[k])) { clash = true; break; } }
-      if (!clash) return cand;
-    }
-    return null;
-  }
-
-  const boardNeed = 5 - boardIdx.length;
-  const nPlayers = players.length;
-
-  return await new Promise((resolve) => {
-    let t = 0, completed = 0;
-    let heroEqSum = 0;
-    const CHUNK = 6000;
-
-    function runChunk() {
-      const end = Math.min(t + CHUNK, TRIALS);
-      for (; t < end; t++) {
-        const blocked = new Set(deadIdx);
-        for (let b = 0; b < boardIdx.length; b++) blocked.add(boardIdx[b]);
-
-        // Hero hand for this trial
-        let hero;
-        if (heroSet) {
-          hero = sampleFrom(heroSet, blocked);
-          if (!hero) continue;
-          for (let k = 0; k < hero.length; k++) blocked.add(hero[k]);
-        } else {
-          hero = heroIdx;
-          for (let k = 0; k < hero.length; k++) {
-            if (blocked.has(hero[k])) { hero = null; break; }
-            blocked.add(hero[k]);
-          }
-          if (!hero) continue;
-        }
-
-        // Sample each villain
-        const villains = [];
-        let ok = true;
-        for (let v = 0; v < villainSets.length; v++) {
-          const h = sampleFrom(villainSets[v], blocked);
-          if (!h) { ok = false; break; }
-          for (let k = 0; k < h.length; k++) blocked.add(h[k]);
-          villains.push(h);
-        }
-        if (!ok) continue;
-
-        // Deal remaining board
-        const deck = [];
-        for (let i = 0; i < 52; i++) if (!blocked.has(i)) deck.push(i);
-        for (let k = 0; k < boardNeed; k++) {
-          const j = k + Math.floor(rng() * (deck.length - k));
-          const tmp = deck[k]; deck[k] = deck[j]; deck[j] = tmp;
-        }
-        const run = boardIdx.concat(deck.slice(0, boardNeed));
-
-        // Showdown: hero vs best villain (split on ties for hero share)
-        const heroScore = evalFn(hero, run);
-        let maxScore = heroScore, ties = 1;
-        for (let v = 0; v < villains.length; v++) {
-          const s = evalFn(villains[v], run);
-          if (s > maxScore) { maxScore = s; ties = 1; }
-          else if (s === maxScore) { ties++; }
-        }
-        if (heroScore === maxScore) heroEqSum += 1 / ties;
-        completed++;
-      }
-
-      onProgress(t, TRIALS);
-      if (t < TRIALS) {
-        setTimeout(runChunk, 0);
-      } else {
-        const heroEq = completed ? (heroEqSum / completed) * 100 : 0;
-        const out = { board: query.board || '', dead: query.dead || '', players: [] };
-        out.players.push({
-          range: players[0].range, equity: heroEq,
-          combos: heroSet ? heroSet.combos : undefined,
-          exact: heroSet ? heroSet.exact : true, trials: completed
-        });
-        // villain equity = remainder (heads-up); for multiway we only have hero%.
-        for (let v = 0; v < villainSets.length; v++) {
-          const set = villainSets[v];
-          const villEq = (villainSets.length === 1) ? (100 - heroEq) : undefined;
-          out.players.push({
-            range: players[v + 1].range,
-            equity: villEq, combos: set.combos, exact: set.exact, trials: completed
-          });
-        }
-        resolve(out);
-      }
-    }
-    runChunk();
+  const res = window.PPTEquity.computeMultiwayEquity({
+    game: game,
+    players: enginePlayers,
+    board: query.board || '',
+    dead: query.dead || '',
+    trials: TRIALS,
+    onProgress: function (frac) { onProgress(Math.round(frac * TRIALS), TRIALS); }
   });
+
+  // Map the engine result back into the shape formatResultBlock / saveToHistory
+  // expect: { board, dead, game, players:[{range, equity, combos, exact, trials}] }.
+  const out = {
+    board: query.board || '',
+    dead: query.dead || '',
+    game: game,
+    players: res.players.map((ep, i) => ({
+      range: players[i].range,
+      equity: ep.equity,
+      combos: ep.combos,
+      exact: ep.kind === 'fixed',
+      trials: res.trials
+    }))
+  };
+  return out;
 }
 
 const AI_SYSTEM_PROMPT_OLD = `You are an expert poker analyst. You INFER everything possible and RUN CALCULATIONS IMMEDIATELY. You almost NEVER ask clarifying questions — just figure it out and run it.
